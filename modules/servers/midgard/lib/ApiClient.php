@@ -90,6 +90,14 @@ final class ApiClient
     /**
      * @return array<string, mixed>
      */
+    public function getLocation(int $locationId): array
+    {
+        return $this->get('/api/v1/admin/locations/' . $locationId);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
     public function randomName(): array
     {
         return $this->get('/api/v1/admin/servers/random-name');

@@ -117,10 +117,106 @@ function midgard_TestConnection(array $params): array
 function midgard_CreateAccount(array $params)
 {
     $serviceId = (int) ($params['serviceid'] ?? 0);
+    $stage = 'init';
+    $panelBaseUrl = '';
+    $locationId = 0;
+    $osImageId = 0;
 
     try {
         $store = midgard_store();
         $client = midgard_client($params);
+        $panelBaseUrl = Config::panelBaseUrl($params);
+
+        $criticalIds = Config::validateCriticalProvisioningIds($params);
+        $locationId = (int) $criticalIds['location_id'];
+        $osImageId = (int) $criticalIds['os_image_id'];
+        if (! $criticalIds['valid']) {
+            $firstError = array_values($criticalIds['errors'])[0] ?? 'Critical module settings are invalid.';
+            midgard_logDiagnostic('createAccount.invalidConfig', [
+                'serviceid' => $serviceId,
+                'panel_base_url' => $panelBaseUrl,
+                'location_id' => $locationId,
+                'os_image_id' => $osImageId,
+                'errors' => $criticalIds['errors'],
+            ]);
+
+            return 'Provisioning blocked: ' . $firstError;
+        }
+
+        $cpu = Config::intOption($params, 'cpu', 1);
+        $memoryGb = Config::intOption($params, 'memory_gb', 1);
+        $diskGb = Config::intOption($params, 'disk_gb', 10);
+        $backupLimit = Config::intOption($params, 'backup_limit', 0);
+        $snapshotLimit = Config::intOption($params, 'snapshot_limit', 0);
+        $bandwidthTb = Config::intOption($params, 'bandwidth_tb', 1);
+        $requireIpv4 = Config::boolOption($params, 'default_ipv4', false);
+        $requireIpv6 = Config::boolOption($params, 'default_ipv6', false);
+        $memoryBytes = $memoryGb * 1024 * 1024 * 1024;
+        $diskBytes = $diskGb * 1024 * 1024 * 1024;
+
+        midgard_logDiagnostic('createAccount.resolvedConfig', [
+            'serviceid' => $serviceId,
+            'panel_base_url' => $panelBaseUrl,
+            'location_id' => $locationId,
+            'os_image_id' => $osImageId,
+            'cpu' => $cpu,
+            'memory_gb' => $memoryGb,
+            'disk_gb' => $diskGb,
+            'bandwidth_tb' => $bandwidthTb,
+            'backup_limit' => $backupLimit,
+            'snapshot_limit' => $snapshotLimit,
+            'default_ipv4' => $requireIpv4,
+            'default_ipv6' => $requireIpv6,
+        ]);
+
+        $stage = 'location_check';
+        try {
+            $locationResponse = $client->getLocation($locationId);
+            $locationData = $locationResponse['data'] ?? null;
+            $resolvedLocationId = is_array($locationData)
+                ? (int) ($locationData['id'] ?? 0)
+                : 0;
+
+            if ($resolvedLocationId !== $locationId) {
+                midgard_logDiagnostic('createAccount.locationMismatch', [
+                    'serviceid' => $serviceId,
+                    'panel_base_url' => $panelBaseUrl,
+                    'location_id' => $locationId,
+                ], $locationResponse);
+
+                return "Provisioning blocked: location_id {$locationId} was not found on connected Midgard panel.";
+            }
+        } catch (MidgardApiException $e) {
+            $message = strtolower($e->getMessage());
+            if (
+                in_array($e->statusCode(), [404, 422], true)
+                || str_contains($message, 'location')
+            ) {
+                midgard_logDiagnostic('createAccount.locationLookupFailed', [
+                    'serviceid' => $serviceId,
+                    'panel_base_url' => $panelBaseUrl,
+                    'location_id' => $locationId,
+                    'status_code' => $e->statusCode(),
+                ], [
+                    'message' => $e->getMessage(),
+                    'payload' => $e->payload(),
+                ]);
+
+                return "Provisioning blocked: location_id {$locationId} was not found on connected Midgard panel.";
+            }
+
+            midgard_logDiagnostic('createAccount.locationLookupError', [
+                'serviceid' => $serviceId,
+                'panel_base_url' => $panelBaseUrl,
+                'location_id' => $locationId,
+                'status_code' => $e->statusCode(),
+            ], [
+                'message' => $e->getMessage(),
+                'payload' => $e->payload(),
+            ]);
+
+            return 'Provisioning blocked: unable to verify selected location_id against connected Midgard panel.';
+        }
 
         $clientEmail = trim((string) ($params['clientsdetails']['email'] ?? ''));
         if ($clientEmail === '') {
@@ -147,20 +243,30 @@ function midgard_CreateAccount(array $params)
             $user = $userData;
         }
 
-        $cpu = Config::intOption($params, 'cpu', 1);
-        $memoryBytes = Config::intOption($params, 'memory_gb', 1) * 1024 * 1024 * 1024;
-        $diskBytes = Config::intOption($params, 'disk_gb', 10) * 1024 * 1024 * 1024;
-
         $preflightPayload = [
-            'location_id' => Config::intOption($params, 'location_id', 0),
+            'location_id' => $locationId,
             'cpu' => $cpu,
             'memory' => $memoryBytes,
             'disk' => $diskBytes,
-            'default_ipv4' => Config::boolOption($params, 'default_ipv4', false),
-            'default_ipv6' => Config::boolOption($params, 'default_ipv6', false),
+            'default_ipv4' => $requireIpv4,
+            'default_ipv6' => $requireIpv6,
         ];
 
+        $stage = 'preflight';
+        midgard_logDiagnostic('createAccount.preflightRequest', [
+            'serviceid' => $serviceId,
+            'panel_base_url' => $panelBaseUrl,
+            'payload' => $preflightPayload,
+        ]);
+
         $preflightResponse = $client->preflight($preflightPayload);
+        midgard_logDiagnostic('createAccount.preflightResponse', [
+            'serviceid' => $serviceId,
+            'panel_base_url' => $panelBaseUrl,
+            'location_id' => $locationId,
+            'node_id' => (int) (($preflightResponse['data']['node']['id'] ?? 0)),
+        ], $preflightResponse);
+
         $preflightNodeId = (int) (($preflightResponse['data']['node']['id'] ?? 0));
         if ($preflightNodeId <= 0) {
             return 'Midgard preflight failed: no suitable node was returned.';
@@ -188,13 +294,35 @@ function midgard_CreateAccount(array $params)
             'cpu' => $cpu,
             'memory' => $memoryBytes,
             'disk' => $diskBytes,
-            'bandwidth_limit' => Config::intOption($params, 'bandwidth_tb', 1) * 1024 * 1024 * 1024 * 1024,
-            'backup_limit' => Config::intOption($params, 'backup_limit', 0),
-            'snapshot_limit' => Config::intOption($params, 'snapshot_limit', 0),
-            'os_image_id' => Config::intOption($params, 'os_image_id', 0),
+            'bandwidth_limit' => $bandwidthTb * 1024 * 1024 * 1024 * 1024,
+            'backup_limit' => $backupLimit,
+            'snapshot_limit' => $snapshotLimit,
+            'os_image_id' => $osImageId,
         ];
 
+        $stage = 'create_server';
+        midgard_logDiagnostic('createAccount.createServerRequest', [
+            'serviceid' => $serviceId,
+            'panel_base_url' => $panelBaseUrl,
+            'node_id' => $preflightNodeId,
+            'location_id' => $locationId,
+            'os_image_id' => $osImageId,
+            'cpu' => $cpu,
+            'memory' => $memoryBytes,
+            'disk' => $diskBytes,
+            'bandwidth_limit' => $createPayload['bandwidth_limit'],
+            'backup_limit' => $backupLimit,
+            'snapshot_limit' => $snapshotLimit,
+        ]);
+
         $createResponse = $client->createServer($createPayload);
+        midgard_logDiagnostic('createAccount.createServerResponse', [
+            'serviceid' => $serviceId,
+            'panel_base_url' => $panelBaseUrl,
+            'location_id' => $locationId,
+            'os_image_id' => $osImageId,
+        ], $createResponse);
+
         $serverData = $createResponse['data'] ?? [];
         if (! is_array($serverData)) {
             return 'Midgard create response was invalid.';
@@ -229,6 +357,17 @@ function midgard_CreateAccount(array $params)
         return 'success';
     } catch (MidgardApiException $e) {
         $payload = $e->payload();
+        midgard_logDiagnostic('createAccount.apiError', [
+            'serviceid' => $serviceId,
+            'stage' => $stage,
+            'panel_base_url' => $panelBaseUrl,
+            'location_id' => $locationId,
+            'os_image_id' => $osImageId,
+            'status_code' => $e->statusCode(),
+        ], [
+            'message' => $e->getMessage(),
+            'payload' => $payload,
+        ]);
 
         if (($payload['error_code'] ?? '') === 'preflight_failed') {
             return midgard_preflightFailureMessage($payload);
@@ -236,6 +375,16 @@ function midgard_CreateAccount(array $params)
 
         return 'Midgard API error: ' . $e->getMessage();
     } catch (\Throwable $e) {
+        midgard_logDiagnostic('createAccount.unexpectedError', [
+            'serviceid' => $serviceId,
+            'stage' => $stage,
+            'panel_base_url' => $panelBaseUrl,
+            'location_id' => $locationId,
+            'os_image_id' => $osImageId,
+        ], [
+            'message' => $e->getMessage(),
+        ]);
+
         return 'Provisioning failed: ' . $e->getMessage();
     }
 }
@@ -433,6 +582,19 @@ function midgard_clientName(array $params): string
     $at = strpos($email, '@');
 
     return $at === false ? $email : substr($email, 0, $at);
+}
+
+/**
+ * @param array<string, mixed> $requestData
+ * @param mixed $responseData
+ */
+function midgard_logDiagnostic(string $action, array $requestData, $responseData = null): void
+{
+    if (! function_exists('logModuleCall')) {
+        return;
+    }
+
+    logModuleCall('midgard', $action, $requestData, $responseData, null, []);
 }
 
 /**
