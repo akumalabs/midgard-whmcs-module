@@ -44,6 +44,10 @@ final class SyncService
                 $serverName = trim((string) ($serverData['name'] ?? ''));
                 $hostname = trim((string) ($serverData['hostname'] ?? ''));
                 $serverUuid = trim((string) ($serverData['uuid'] ?? ''));
+                $networkSummary = self::extractNetworkSummary($serverData);
+                $meta['midgard_addresses'] = $networkSummary['addresses'];
+                $meta['midgard_primary_ipv4'] = $networkSummary['primary_ipv4'];
+                $meta['midgard_primary_ipv6'] = $networkSummary['primary_ipv6'];
 
                 if ($serverName !== '' && $hostname !== '') {
                     self::syncHostingIdentity($serviceId, $serverName, $hostname);
@@ -77,5 +81,64 @@ final class SyncService
                 'username' => $serverName,
                 'domain' => $hostname,
             ]);
+    }
+
+    /**
+     * @param array<string, mixed> $serverData
+     * @return array{
+     *   addresses: array<int, array{id: int, address: string, type: string, is_primary: bool}>,
+     *   primary_ipv4: string,
+     *   primary_ipv6: string
+     * }
+     */
+    private static function extractNetworkSummary(array $serverData): array
+    {
+        $addressesRaw = $serverData['addresses'] ?? [];
+        $addresses = [];
+        $primaryIpv4 = '';
+        $primaryIpv6 = '';
+
+        if (! is_array($addressesRaw)) {
+            return [
+                'addresses' => [],
+                'primary_ipv4' => '',
+                'primary_ipv6' => '',
+            ];
+        }
+
+        foreach ($addressesRaw as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $id = (int) ($row['id'] ?? 0);
+            $address = trim((string) ($row['address'] ?? ''));
+            $type = strtolower(trim((string) ($row['type'] ?? '')));
+            $isPrimary = (bool) ($row['is_primary'] ?? false);
+
+            if ($address === '' || ! in_array($type, ['ipv4', 'ipv6'], true)) {
+                continue;
+            }
+
+            $addresses[] = [
+                'id' => $id,
+                'address' => $address,
+                'type' => $type,
+                'is_primary' => $isPrimary,
+            ];
+
+            if ($isPrimary && $type === 'ipv4' && $primaryIpv4 === '') {
+                $primaryIpv4 = $address;
+            }
+            if ($isPrimary && $type === 'ipv6' && $primaryIpv6 === '') {
+                $primaryIpv6 = $address;
+            }
+        }
+
+        return [
+            'addresses' => $addresses,
+            'primary_ipv4' => $primaryIpv4,
+            'primary_ipv6' => $primaryIpv6,
+        ];
     }
 }
