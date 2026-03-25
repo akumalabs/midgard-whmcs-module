@@ -1,0 +1,22 @@
+{
+  "name": "midgard/midgard-whmcs-module",
+  "description": "WHMCS server module for Midgard panel",
+  "type": "project",
+  "license": "proprietary",
+  "autoload": {
+    "psr-4": {
+      "MidgardWhmcs\\": "modules/servers/midgard/lib/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "MidgardWhmcs\\Tests\\": "tests/"
+    }
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^10.5"
+  },
+  "scripts": {
+    "test": "phpunit"
+  }
+}
