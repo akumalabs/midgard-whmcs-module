@@ -665,12 +665,26 @@ function midgard_AdminServicesTabFields(array $params): array
 <span class="text-info">&nbsp;&nbsp;Use this only for manual rebinds. Save to bind/unbind, then run "Refresh from Panel".</span>
 HTML;
 
+    $metaBlock = [
+        'midgard_user_id' => (string) ($meta['midgard_user_id'] ?? ''),
+        'midgard_provision_state' => (string) ($meta['midgard_provision_state'] ?? ''),
+        'midgard_last_error' => (string) ($meta['midgard_last_error'] ?? ''),
+        'midgard_password_email_sent_at' => (string) ($meta['midgard_password_email_sent_at'] ?? ''),
+    ];
+    $metaBlockJson = json_encode($metaBlock, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    if ($metaBlockJson === false) {
+        $metaBlockJson = '{}';
+    }
+    $metaBlockEscaped = htmlspecialchars($metaBlockJson, ENT_QUOTES, 'UTF-8');
+    $metaBlockField = <<<HTML
+<textarea class="form-control" rows="8" readonly style="width:100%;font-family:monospace;">{$metaBlockEscaped}</textarea>
+<span class="text-info">&nbsp;&nbsp;Read-only operational metadata.</span>
+HTML;
+
     return [
-        'Midgard User ID' => htmlspecialchars((string) ($meta['midgard_user_id'] ?? '')),
         'Midgard Server ID' => $serverIdField,
         'Midgard Server UUID' => htmlspecialchars((string) ($meta['midgard_server_uuid'] ?? '')),
-        'Last Error' => htmlspecialchars((string) ($meta['midgard_last_error'] ?? '')),
-        'Password Email Sent At' => htmlspecialchars((string) ($meta['midgard_password_email_sent_at'] ?? '')),
+        'Midgard Metadata' => $metaBlockField,
     ];
 }
 
