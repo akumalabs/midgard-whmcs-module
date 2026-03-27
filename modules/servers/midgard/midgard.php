@@ -666,6 +666,7 @@ function midgard_AdminServicesTabFields(array $params): array
 HTML;
 
     $metaBlock = [
+        'midgard_server_uuid' => (string) ($meta['midgard_server_uuid'] ?? ''),
         'midgard_user_id' => (string) ($meta['midgard_user_id'] ?? ''),
         'midgard_provision_state' => (string) ($meta['midgard_provision_state'] ?? ''),
         'midgard_last_error' => (string) ($meta['midgard_last_error'] ?? ''),
@@ -683,7 +684,6 @@ HTML;
 
     return [
         'Midgard Server ID' => $serverIdField,
-        'Midgard Server UUID' => htmlspecialchars((string) ($meta['midgard_server_uuid'] ?? '')),
         'Midgard Metadata' => $metaBlockField,
     ];
 }
