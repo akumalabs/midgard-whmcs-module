@@ -44,10 +44,14 @@ final class SyncService
                 $serverName = trim((string) ($serverData['name'] ?? ''));
                 $hostname = trim((string) ($serverData['hostname'] ?? ''));
                 $serverUuid = trim((string) ($serverData['uuid'] ?? ''));
+                $serverOwnerId = self::extractServerOwnerId($serverData);
                 $networkSummary = self::extractNetworkSummary($serverData);
                 $meta['midgard_addresses'] = $networkSummary['addresses'];
                 $meta['midgard_primary_ipv4'] = $networkSummary['primary_ipv4'];
                 $meta['midgard_primary_ipv6'] = $networkSummary['primary_ipv6'];
+                if ($serverOwnerId > 0) {
+                    $meta['midgard_user_id'] = (string) $serverOwnerId;
+                }
 
                 if ($serverName !== '' && $hostname !== '') {
                     self::syncHostingIdentity($serviceId, $serverName, $hostname);
@@ -140,5 +144,26 @@ final class SyncService
             'primary_ipv4' => $primaryIpv4,
             'primary_ipv6' => $primaryIpv6,
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $serverData
+     */
+    private static function extractServerOwnerId(array $serverData): int
+    {
+        $ownerId = (int) ($serverData['ownerId'] ?? 0);
+        if ($ownerId > 0) {
+            return $ownerId;
+        }
+
+        $ownerRaw = $serverData['owner'] ?? null;
+        if (is_array($ownerRaw)) {
+            $ownerId = (int) ($ownerRaw['id'] ?? 0);
+            if ($ownerId > 0) {
+                return $ownerId;
+            }
+        }
+
+        return 0;
     }
 }

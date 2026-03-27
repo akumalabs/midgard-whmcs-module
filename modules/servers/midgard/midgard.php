@@ -669,7 +669,6 @@ HTML;
         'Midgard User ID' => htmlspecialchars((string) ($meta['midgard_user_id'] ?? '')),
         'Midgard Server ID' => $serverIdField,
         'Midgard Server UUID' => htmlspecialchars((string) ($meta['midgard_server_uuid'] ?? '')),
-        'Provision State' => htmlspecialchars((string) ($meta['midgard_provision_state'] ?? '')),
         'Last Error' => htmlspecialchars((string) ($meta['midgard_last_error'] ?? '')),
         'Password Email Sent At' => htmlspecialchars((string) ($meta['midgard_password_email_sent_at'] ?? '')),
     ];
@@ -744,6 +743,10 @@ function midgard_AdminServicesTabFieldsSave(array $params): void
                 'actual_user_id' => $actualUserId,
             ]);
             return;
+        }
+
+        if ($actualUserId > 0 && $expectedUserId <= 0) {
+            $meta['midgard_user_id'] = (string) $actualUserId;
         }
 
         $meta['midgard_server_id'] = (string) $targetServerId;
