@@ -18,8 +18,8 @@ if (! defined('WHMCS')) {
 require_once __DIR__ . '/lib/ApiClient.php';
 require_once __DIR__ . '/lib/Config.php';
 require_once __DIR__ . '/lib/IdempotencyGuard.php';
-require_once __DIR__ . '/lib/MetadataStore.php';
 require_once __DIR__ . '/lib/PasswordDispatchStore.php';
+require_once __DIR__ . '/lib/MetadataStore.php';
 require_once __DIR__ . '/lib/PasswordMailer.php';
 require_once __DIR__ . '/lib/ProvisionStateMapper.php';
 require_once __DIR__ . '/lib/SsoHelper.php';
@@ -823,6 +823,15 @@ function midgard_store(): MetadataStore
     static $store = null;
 
     if ($store === null) {
+        if (! class_exists(MetadataStore::class, false)) {
+            require_once __DIR__ . '/lib/PasswordDispatchStore.php';
+            require_once __DIR__ . '/lib/MetadataStore.php';
+        }
+
+        if (! class_exists(MetadataStore::class, false)) {
+            throw new \RuntimeException('Midgard module runtime is incomplete: MetadataStore class could not be loaded.');
+        }
+
         $store = new MetadataStore();
     }
 
