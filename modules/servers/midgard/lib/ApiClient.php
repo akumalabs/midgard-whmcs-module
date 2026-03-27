@@ -123,6 +123,32 @@ final class ApiClient
     /**
      * @return array<string, mixed>
      */
+    public function availableIPs(int $serverId): array
+    {
+        return $this->get('/api/v1/admin/servers/' . $serverId . '/network/available-ips');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function assignIP(int $serverId, int $addressId): array
+    {
+        return $this->post('/api/v1/admin/servers/' . $serverId . '/network/assign-ip', [
+            'address_id' => $addressId,
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function setPrimaryIP(int $serverId, int $addressId): array
+    {
+        return $this->post('/api/v1/admin/servers/' . $serverId . '/network/addresses/' . $addressId . '/set-primary', []);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
     public function installProgress(int $serverId): array
     {
         return $this->get('/api/v1/admin/servers/' . $serverId . '/install-progress');

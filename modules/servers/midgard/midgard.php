@@ -19,6 +19,7 @@ require_once __DIR__ . '/lib/ApiClient.php';
 require_once __DIR__ . '/lib/Config.php';
 require_once __DIR__ . '/lib/IdempotencyGuard.php';
 require_once __DIR__ . '/lib/MetadataStore.php';
+require_once __DIR__ . '/lib/PasswordDispatchStore.php';
 require_once __DIR__ . '/lib/PasswordMailer.php';
 require_once __DIR__ . '/lib/ProvisionStateMapper.php';
 require_once __DIR__ . '/lib/SsoHelper.php';
@@ -112,6 +113,13 @@ function midgard_TestConnection(array $params): array
             'error' => $e->getMessage(),
         ];
     }
+}
+
+function midgard_AdminCustomButtonArray(): array
+{
+    return [
+        'Refresh from Panel' => 'RefreshFromPanel',
+    ];
 }
 
 function midgard_CreateAccount(array $params)
@@ -218,6 +226,86 @@ function midgard_CreateAccount(array $params)
             return 'Provisioning blocked: unable to verify selected location_id against connected Midgard panel.';
         }
 
+        $meta = $store->get($serviceId);
+        $existingServerId = (int) ($meta['midgard_server_id'] ?? 0);
+        if ($existingServerId > 0) {
+            $stage = 'reuse_existing_server';
+            $domainStatus = midgard_resolveHostingStatus($params, $serviceId);
+            midgard_logDiagnostic('createAccount.reuseExistingServer', [
+                'serviceid' => $serviceId,
+                'panel_base_url' => $panelBaseUrl,
+                'existing_server_id' => $existingServerId,
+                'existing_server_uuid' => (string) ($meta['midgard_server_uuid'] ?? ''),
+                'default_ipv4' => $requireIpv4,
+                'domainstatus' => $domainStatus,
+            ]);
+
+            if ($domainStatus === 'active') {
+                $meta['midgard_last_error'] = '';
+                $store->upsert($serviceId, $meta);
+                return 'success';
+            }
+
+            try {
+                $existingServerResponse = $client->getServer($existingServerId);
+                $existingServerData = $existingServerResponse['data'] ?? [];
+
+                if (! is_array($existingServerData)) {
+                    return 'Provisioning blocked: stored Midgard server metadata is invalid.';
+                }
+
+                $existingServerUuid = trim((string) ($existingServerData['uuid'] ?? ''));
+                if ($existingServerUuid !== '' && $existingServerUuid !== (string) ($meta['midgard_server_uuid'] ?? '')) {
+                    $meta['midgard_server_uuid'] = $existingServerUuid;
+                }
+
+                $existingServerName = trim((string) ($existingServerData['name'] ?? ''));
+                $existingHostname = trim((string) ($existingServerData['hostname'] ?? ''));
+                if ($existingServerName !== '' && $existingHostname !== '') {
+                    SyncService::syncHostingIdentity($serviceId, $existingServerName, $existingHostname);
+                }
+
+                $meta['midgard_server_id'] = (string) $existingServerId;
+                $store->upsert($serviceId, $meta);
+                $meta = SyncService::syncFromPanel($params, $store);
+
+                $meta['midgard_last_error'] = '';
+                $store->upsert($serviceId, $meta);
+                midgard_setHostingStatus($serviceId, 'Active');
+                return 'success';
+            } catch (MidgardApiException $e) {
+                if ($e->statusCode() === 404) {
+                    midgard_logDiagnostic('createAccount.reuseExistingServerNotFound', [
+                        'serviceid' => $serviceId,
+                        'panel_base_url' => $panelBaseUrl,
+                        'existing_server_id' => $existingServerId,
+                    ], [
+                        'message' => $e->getMessage(),
+                        'payload' => $e->payload(),
+                    ]);
+
+                    $store->clear($serviceId);
+                } else {
+                    $message = 'Provisioning blocked: unable to verify existing Midgard server metadata.';
+                    $meta = $store->get($serviceId);
+                    $meta['midgard_last_error'] = $message;
+                    $store->upsert($serviceId, $meta);
+                    midgard_setHostingStatus($serviceId, 'Pending');
+                    midgard_logDiagnostic('createAccount.reuseExistingServerError', [
+                        'serviceid' => $serviceId,
+                        'panel_base_url' => $panelBaseUrl,
+                        'existing_server_id' => $existingServerId,
+                        'status_code' => $e->statusCode(),
+                    ], [
+                        'message' => $e->getMessage(),
+                        'payload' => $e->payload(),
+                    ]);
+
+                    return $message;
+                }
+            }
+        }
+
         $clientEmail = trim((string) ($params['clientsdetails']['email'] ?? ''));
         if ($clientEmail === '') {
             return 'Client email is required for Midgard provisioning.';
@@ -269,7 +357,13 @@ function midgard_CreateAccount(array $params)
 
         $preflightNodeId = (int) (($preflightResponse['data']['node']['id'] ?? 0));
         if ($preflightNodeId <= 0) {
-            return 'Midgard preflight failed: no suitable node was returned.';
+            $message = 'Midgard preflight failed: no suitable node was returned.';
+            $meta = $store->get($serviceId);
+            $meta['midgard_last_error'] = $message;
+            $store->upsert($serviceId, $meta);
+            midgard_setHostingStatus($serviceId, 'Pending');
+
+            return $message;
         }
 
         $randomNameResponse = $client->randomName();
@@ -298,6 +392,8 @@ function midgard_CreateAccount(array $params)
             'backup_limit' => $backupLimit,
             'snapshot_limit' => $snapshotLimit,
             'os_image_id' => $osImageId,
+            'default_ipv4' => $requireIpv4,
+            'default_ipv6' => $requireIpv6,
         ];
 
         $stage = 'create_server';
@@ -313,6 +409,8 @@ function midgard_CreateAccount(array $params)
             'bandwidth_limit' => $createPayload['bandwidth_limit'],
             'backup_limit' => $backupLimit,
             'snapshot_limit' => $snapshotLimit,
+            'default_ipv4' => $requireIpv4,
+            'default_ipv6' => $requireIpv6,
         ]);
 
         $createResponse = $client->createServer($createPayload);
@@ -350,9 +448,10 @@ function midgard_CreateAccount(array $params)
             logModuleCall('midgard', 'sendOneTimePasswordEmail', ['serviceid' => $serviceId], $e->getMessage(), null, []);
         }
 
-        Capsule::table('tblhosting')
-            ->where('id', $serviceId)
-            ->update(['domainstatus' => 'Active']);
+        $meta = $store->get($serviceId);
+        $meta['midgard_last_error'] = '';
+        $store->upsert($serviceId, $meta);
+        midgard_setHostingStatus($serviceId, 'Active');
 
         return 'success';
     } catch (MidgardApiException $e) {
@@ -370,7 +469,13 @@ function midgard_CreateAccount(array $params)
         ]);
 
         if (($payload['error_code'] ?? '') === 'preflight_failed') {
-            return midgard_preflightFailureMessage($payload);
+            $message = midgard_preflightFailureMessage($payload);
+            $meta = midgard_store()->get($serviceId);
+            $meta['midgard_last_error'] = $message;
+            midgard_store()->upsert($serviceId, $meta);
+            midgard_setHostingStatus($serviceId, 'Pending');
+
+            return $message;
         }
 
         return 'Midgard API error: ' . $e->getMessage();
@@ -471,6 +576,7 @@ function midgard_ClientArea(array $params): array
     $serviceId = (int) ($params['serviceid'] ?? 0);
     $store = midgard_store();
     $meta = $store->get($serviceId);
+    $requireIpv4 = Config::boolOption($params, 'default_ipv4', false);
 
     try {
         $meta = SyncService::syncFromPanel($params, $store);
@@ -500,6 +606,28 @@ function midgard_ClientArea(array $params): array
         logModuleCall('midgard', 'buildSsoUrl', ['serviceid' => $serviceId], $e->getMessage(), null, []);
     }
 
+    $addresses = [];
+    if (is_array($meta['midgard_addresses'] ?? null)) {
+        $addresses = $meta['midgard_addresses'];
+    }
+
+    $primaryIpv4 = trim((string) ($meta['midgard_primary_ipv4'] ?? ''));
+    $primaryIpv6 = trim((string) ($meta['midgard_primary_ipv6'] ?? ''));
+    if (($primaryIpv4 === '' || $primaryIpv6 === '') && count($addresses) > 0) {
+        $networkSummary = midgard_extractNetworkSummary(['addresses' => $addresses]);
+        if ($primaryIpv4 === '') {
+            $primaryIpv4 = $networkSummary['primary_ipv4'];
+        }
+        if ($primaryIpv6 === '') {
+            $primaryIpv6 = $networkSummary['primary_ipv6'];
+        }
+    }
+
+    $ipv4Missing = $requireIpv4 && $primaryIpv4 === '';
+    $ipv4Warning = $ipv4Missing
+        ? 'IPv4 is required for this service but is not currently assigned. Provisioning remains pending until IPv4 is assigned.'
+        : '';
+
     return [
         'templatefile' => 'clientarea',
         'requirelogin' => true,
@@ -509,6 +637,12 @@ function midgard_ClientArea(array $params): array
             'midgardProvisionStateClass' => $stateClass,
             'midgardProvisionError' => (string) ($meta['midgard_last_error'] ?? ''),
             'midgardSsoUrl' => $ssoUrl,
+            'midgardPrimaryIpv4' => $primaryIpv4,
+            'midgardPrimaryIpv6' => $primaryIpv6,
+            'midgardAddresses' => $addresses,
+            'midgardIpv4Required' => $requireIpv4,
+            'midgardIpv4Missing' => $ipv4Missing,
+            'midgardIpv4Warning' => $ipv4Warning,
             'midgardSpecs' => [
                 'cpu' => Config::intOption($params, 'cpu', 1),
                 'memory_gb' => Config::intOption($params, 'memory_gb', 1),
@@ -525,15 +659,155 @@ function midgard_ClientArea(array $params): array
 function midgard_AdminServicesTabFields(array $params): array
 {
     $meta = midgard_store()->get((int) ($params['serviceid'] ?? 0));
+    $serverId = htmlspecialchars((string) ($meta['midgard_server_id'] ?? ''), ENT_QUOTES, 'UTF-8');
+    $serverIdField = <<<HTML
+<input type="text" class="form-control input-200 input-inline" name="modulefields[midgard_server_id]" value="{$serverId}" />
+<span class="text-info">&nbsp;&nbsp;Use this only for manual rebinds. Save to bind/unbind, then run "Refresh from Panel".</span>
+HTML;
 
     return [
         'Midgard User ID' => htmlspecialchars((string) ($meta['midgard_user_id'] ?? '')),
-        'Midgard Server ID' => htmlspecialchars((string) ($meta['midgard_server_id'] ?? '')),
+        'Midgard Server ID' => $serverIdField,
         'Midgard Server UUID' => htmlspecialchars((string) ($meta['midgard_server_uuid'] ?? '')),
         'Provision State' => htmlspecialchars((string) ($meta['midgard_provision_state'] ?? '')),
         'Last Error' => htmlspecialchars((string) ($meta['midgard_last_error'] ?? '')),
         'Password Email Sent At' => htmlspecialchars((string) ($meta['midgard_password_email_sent_at'] ?? '')),
     ];
+}
+
+function midgard_AdminServicesTabFieldsSave(array $params): void
+{
+    $serviceId = (int) ($params['serviceid'] ?? 0);
+    if ($serviceId <= 0) {
+        return;
+    }
+
+    $rawModuleFields = $_POST['modulefields'] ?? null;
+    if (! is_array($rawModuleFields)) {
+        return;
+    }
+
+    if (array_key_exists('midgard_server_id', $rawModuleFields)) {
+        $targetServerIdRaw = trim((string) $rawModuleFields['midgard_server_id']);
+    } elseif (array_key_exists(0, $rawModuleFields)) {
+        $targetServerIdRaw = trim((string) $rawModuleFields[0]);
+    } else {
+        return;
+    }
+    $store = midgard_store();
+    $meta = $store->get($serviceId);
+    $previousServerId = (string) ($meta['midgard_server_id'] ?? '');
+
+    if ($targetServerIdRaw === '') {
+        $meta['midgard_server_id'] = '';
+        $meta['midgard_server_uuid'] = '';
+        $meta['midgard_provision_state'] = 'installing';
+        $meta['midgard_last_error'] = '';
+        $store->upsert($serviceId, $meta);
+
+        midgard_logDiagnostic('admin.serverBindingCleared', [
+            'serviceid' => $serviceId,
+            'previous_server_id' => $previousServerId,
+        ]);
+        return;
+    }
+
+    if (! ctype_digit($targetServerIdRaw) || (int) $targetServerIdRaw <= 0) {
+        $meta['midgard_last_error'] = 'Manual bind failed: Midgard Server ID must be a positive integer.';
+        $store->upsert($serviceId, $meta);
+        midgard_logDiagnostic('admin.serverBindingRejected.invalidServerId', [
+            'serviceid' => $serviceId,
+            'requested_server_id' => $targetServerIdRaw,
+        ]);
+        return;
+    }
+
+    $targetServerId = (int) $targetServerIdRaw;
+    try {
+        $client = midgard_client($params);
+        $serverResponse = $client->getServer($targetServerId);
+        $serverData = $serverResponse['data'] ?? [];
+        if (! is_array($serverData)) {
+            throw new \RuntimeException('Invalid server payload returned by Midgard panel.');
+        }
+
+        $expectedUserId = (int) ($meta['midgard_user_id'] ?? 0);
+        $actualUserId = midgard_extractServerOwnerId($serverData);
+        if ($expectedUserId > 0 && $actualUserId > 0 && $expectedUserId !== $actualUserId) {
+            $message = "Manual bind failed: server owner mismatch (expected {$expectedUserId}, got {$actualUserId}).";
+            $meta['midgard_last_error'] = $message;
+            $store->upsert($serviceId, $meta);
+            midgard_logDiagnostic('admin.serverBindingRejected.ownerMismatch', [
+                'serviceid' => $serviceId,
+                'requested_server_id' => $targetServerId,
+                'expected_user_id' => $expectedUserId,
+                'actual_user_id' => $actualUserId,
+            ]);
+            return;
+        }
+
+        $meta['midgard_server_id'] = (string) $targetServerId;
+        $serverUuid = trim((string) ($serverData['uuid'] ?? ''));
+        if ($serverUuid !== '') {
+            $meta['midgard_server_uuid'] = $serverUuid;
+        }
+        $meta['midgard_last_error'] = '';
+        $store->upsert($serviceId, $meta);
+
+        $synced = SyncService::syncFromPanel($params, $store);
+        $store->upsert($serviceId, $synced);
+
+        midgard_logDiagnostic('admin.serverBindingUpdated', [
+            'serviceid' => $serviceId,
+            'previous_server_id' => $previousServerId,
+            'current_server_id' => $targetServerId,
+            'expected_user_id' => $expectedUserId,
+            'actual_user_id' => $actualUserId,
+        ]);
+    } catch (\Throwable $e) {
+        $meta = $store->get($serviceId);
+        $meta['midgard_last_error'] = 'Manual bind failed: ' . $e->getMessage();
+        $store->upsert($serviceId, $meta);
+        midgard_logDiagnostic('admin.serverBindingRejected.syncError', [
+            'serviceid' => $serviceId,
+            'requested_server_id' => $targetServerId,
+        ], [
+            'message' => $e->getMessage(),
+        ]);
+    }
+}
+
+function midgard_RefreshFromPanel(array $params)
+{
+    $serviceId = (int) ($params['serviceid'] ?? 0);
+    $store = midgard_store();
+    $meta = $store->get($serviceId);
+    $serverId = (int) ($meta['midgard_server_id'] ?? 0);
+
+    if ($serverId <= 0) {
+        return 'Refresh blocked: Midgard Server ID is not set for this service.';
+    }
+
+    try {
+        $synced = SyncService::syncFromPanel($params, $store);
+        $store->upsert($serviceId, $synced);
+        midgard_logDiagnostic('admin.refreshFromPanel.success', [
+            'serviceid' => $serviceId,
+            'server_id' => $serverId,
+            'provision_state' => (string) ($synced['midgard_provision_state'] ?? ''),
+        ]);
+        return 'success';
+    } catch (\Throwable $e) {
+        $meta['midgard_last_error'] = 'Refresh failed: ' . $e->getMessage();
+        $store->upsert($serviceId, $meta);
+        midgard_logDiagnostic('admin.refreshFromPanel.failed', [
+            'serviceid' => $serviceId,
+            'server_id' => $serverId,
+        ], [
+            'message' => $e->getMessage(),
+        ]);
+        return 'Refresh failed: ' . $e->getMessage();
+    }
 }
 
 function midgard_client(array $params): ApiClient
@@ -582,6 +856,120 @@ function midgard_clientName(array $params): string
     $at = strpos($email, '@');
 
     return $at === false ? $email : substr($email, 0, $at);
+}
+
+function midgard_setHostingStatus(int $serviceId, string $status): void
+{
+    if ($serviceId <= 0) {
+        return;
+    }
+
+    Capsule::table('tblhosting')
+        ->where('id', $serviceId)
+        ->update(['domainstatus' => $status]);
+}
+
+function midgard_resolveHostingStatus(array $params, int $serviceId): string
+{
+    $status = strtolower(trim((string) ($params['status'] ?? '')));
+    if ($status !== '') {
+        return $status;
+    }
+
+    if ($serviceId <= 0) {
+        return '';
+    }
+
+    try {
+        $dbStatus = Capsule::table('tblhosting')
+            ->where('id', $serviceId)
+            ->value('domainstatus');
+
+        return strtolower(trim((string) ($dbStatus ?? '')));
+    } catch (\Throwable $e) {
+        return '';
+    }
+}
+
+/**
+ * @param array<string, mixed> $serverData
+ */
+function midgard_extractServerOwnerId(array $serverData): int
+{
+    $candidates = [
+        (int) ($serverData['user_id'] ?? 0),
+        (int) ($serverData['owner_id'] ?? 0),
+        (int) ($serverData['ownerId'] ?? 0),
+        (int) (($serverData['user']['id'] ?? 0)),
+        (int) (($serverData['owner']['id'] ?? 0)),
+    ];
+
+    foreach ($candidates as $candidate) {
+        if ($candidate > 0) {
+            return $candidate;
+        }
+    }
+
+    return 0;
+}
+
+/**
+ * @param array<string, mixed> $serverData
+ * @return array{
+ *   addresses: array<int, array{id: int, address: string, type: string, is_primary: bool}>,
+ *   primary_ipv4: string,
+ *   primary_ipv6: string
+ * }
+ */
+function midgard_extractNetworkSummary(array $serverData): array
+{
+    $addressesRaw = $serverData['addresses'] ?? [];
+    $addresses = [];
+    $primaryIpv4 = '';
+    $primaryIpv6 = '';
+
+    if (! is_array($addressesRaw)) {
+        return [
+            'addresses' => [],
+            'primary_ipv4' => '',
+            'primary_ipv6' => '',
+        ];
+    }
+
+    foreach ($addressesRaw as $row) {
+        if (! is_array($row)) {
+            continue;
+        }
+
+        $id = (int) ($row['id'] ?? 0);
+        $address = trim((string) ($row['address'] ?? ''));
+        $type = strtolower(trim((string) ($row['type'] ?? '')));
+        $isPrimary = (bool) ($row['is_primary'] ?? false);
+
+        if ($address === '' || ! in_array($type, ['ipv4', 'ipv6'], true)) {
+            continue;
+        }
+
+        $addresses[] = [
+            'id' => $id,
+            'address' => $address,
+            'type' => $type,
+            'is_primary' => $isPrimary,
+        ];
+
+        if ($isPrimary && $type === 'ipv4' && $primaryIpv4 === '') {
+            $primaryIpv4 = $address;
+        }
+        if ($isPrimary && $type === 'ipv6' && $primaryIpv6 === '') {
+            $primaryIpv6 = $address;
+        }
+    }
+
+    return [
+        'addresses' => $addresses,
+        'primary_ipv4' => $primaryIpv4,
+        'primary_ipv6' => $primaryIpv6,
+    ];
 }
 
 /**

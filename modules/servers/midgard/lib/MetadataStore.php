@@ -6,7 +6,7 @@ namespace MidgardWhmcs;
 
 use Illuminate\Database\Capsule\Manager as Capsule;
 
-final class MetadataStore
+final class MetadataStore implements PasswordDispatchStore
 {
     private const META_TABLE = 'mod_midgard_service_meta';
     private const EMAIL_TABLE = 'mod_midgard_email_dispatch';
