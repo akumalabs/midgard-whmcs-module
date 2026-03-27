@@ -5,8 +5,14 @@ Private WHMCS **Server Module** for provisioning and lifecycle management agains
 ## Scope (v1)
 
 - Preflight fail => WHMCS service remains `Pending`.
+- `default_ipv4=true` is enforced at preflight/create (panel-side authority).
 - Create accepted => WHMCS service becomes `Active` immediately.
+- No WHMCS post-create IPv4 re-verification gate for fresh creates.
 - Install fails later => WHMCS service remains `Active`; operational state is tracked in module metadata and shown in client area.
+- Reuse is recovery-only:
+  - `Active + midgard_server_id` => immediate success, no extra checks.
+  - non-Active retry + `midgard_server_id` => sync existing server instead of duplicate create.
+  - reuse 404 => stale mapping is cleared, then fresh create can proceed.
 - Server naming is **always** from Midgard random-name API.
 - Initial password is sent once via custom merge var `{$midgard_server_password}`.
 - Module does **not** store secret in WHMCS `service_password`.
@@ -58,6 +64,14 @@ Stored in module table `mod_midgard_service_meta`:
 - `midgard_last_error`
 - `midgard_password_email_sent_at`
 
+## Admin Rebind Workflow
+
+- `Admin Services` tab exposes editable `Midgard Server ID`.
+- Save with blank value => unbinds the service from current Midgard server mapping.
+- Save with a value => validates server exists and owner matches stored `midgard_user_id` when available, then binds and syncs metadata.
+- Use custom button `Refresh from Panel` to force sync server identity/network/state from Midgard.
+- Rebinding is an admin recovery/operations flow; normal provisioning still uses `Create`.
+
 ## Email Merge Variable
 
 Use in WHMCS email template body:
@@ -91,4 +105,5 @@ composer test
 
 - `TestConnection` fails: check server host/token.
 - `CreateAccount` fails with preflight message: verify node resources/IP availability.
+- Manual bind rejected: verify server ID exists in Midgard and belongs to expected user.
 - No SSO button: ensure module metadata has `midgard_server_uuid` and Midgard SSO endpoint is available.
