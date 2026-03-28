@@ -628,6 +628,16 @@ function midgard_ClientArea(array $params): array
         ? 'IPv4 is required for this service but is not currently assigned. Provisioning remains pending until IPv4 is assigned.'
         : '';
 
+    $configSpecs = [
+        'cpu' => Config::intOption($params, 'cpu', 1),
+        'memory_gb' => Config::intOption($params, 'memory_gb', 1),
+        'disk_gb' => Config::intOption($params, 'disk_gb', 10),
+        'bandwidth_tb' => Config::intOption($params, 'bandwidth_tb', 1),
+        'backup_limit' => Config::intOption($params, 'backup_limit', 0),
+        'snapshot_limit' => Config::intOption($params, 'snapshot_limit', 0),
+        'os_image_id' => Config::intOption($params, 'os_image_id', 0),
+    ];
+
     return [
         'templatefile' => 'clientarea',
         'requirelogin' => true,
@@ -643,15 +653,7 @@ function midgard_ClientArea(array $params): array
             'midgardIpv4Required' => $requireIpv4,
             'midgardIpv4Missing' => $ipv4Missing,
             'midgardIpv4Warning' => $ipv4Warning,
-            'midgardSpecs' => [
-                'cpu' => Config::intOption($params, 'cpu', 1),
-                'memory_gb' => Config::intOption($params, 'memory_gb', 1),
-                'disk_gb' => Config::intOption($params, 'disk_gb', 10),
-                'bandwidth_tb' => Config::intOption($params, 'bandwidth_tb', 1),
-                'backup_limit' => Config::intOption($params, 'backup_limit', 0),
-                'snapshot_limit' => Config::intOption($params, 'snapshot_limit', 0),
-                'os_image_id' => Config::intOption($params, 'os_image_id', 0),
-            ],
+            'midgardSpecs' => SyncService::buildSpecsForClientArea($configSpecs, $meta),
         ],
     ];
 }

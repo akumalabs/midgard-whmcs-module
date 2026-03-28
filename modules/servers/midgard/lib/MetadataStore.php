@@ -33,6 +33,15 @@ final class MetadataStore implements PasswordDispatchStore
             'midgard_provision_state' => (string) ($row->midgard_provision_state ?? 'installing'),
             'midgard_last_error' => (string) ($row->midgard_last_error ?? ''),
             'midgard_password_email_sent_at' => (string) ($row->midgard_password_email_sent_at ?? ''),
+            'midgard_addresses' => $this->decodeAddresses((string) ($row->midgard_addresses ?? '')),
+            'midgard_primary_ipv4' => (string) ($row->midgard_primary_ipv4 ?? ''),
+            'midgard_primary_ipv6' => (string) ($row->midgard_primary_ipv6 ?? ''),
+            'midgard_live_cpu' => $this->nullableIntFromRow($row->midgard_live_cpu ?? null),
+            'midgard_live_memory' => $this->nullableIntFromRow($row->midgard_live_memory ?? null),
+            'midgard_live_disk' => $this->nullableIntFromRow($row->midgard_live_disk ?? null),
+            'midgard_live_bandwidth_limit' => $this->nullableIntFromRow($row->midgard_live_bandwidth_limit ?? null),
+            'midgard_live_backup_limit' => $this->nullableIntFromRow($row->midgard_live_backup_limit ?? null),
+            'midgard_live_snapshot_limit' => $this->nullableIntFromRow($row->midgard_live_snapshot_limit ?? null),
         ]);
     }
 
@@ -51,6 +60,15 @@ final class MetadataStore implements PasswordDispatchStore
             'midgard_provision_state' => (string) ($data['midgard_provision_state'] ?? 'installing'),
             'midgard_last_error' => (string) ($data['midgard_last_error'] ?? ''),
             'midgard_password_email_sent_at' => (string) ($data['midgard_password_email_sent_at'] ?? ''),
+            'midgard_addresses' => $this->encodeAddresses($data['midgard_addresses'] ?? []),
+            'midgard_primary_ipv4' => (string) ($data['midgard_primary_ipv4'] ?? ''),
+            'midgard_primary_ipv6' => (string) ($data['midgard_primary_ipv6'] ?? ''),
+            'midgard_live_cpu' => $this->nullableInt($data['midgard_live_cpu'] ?? null),
+            'midgard_live_memory' => $this->nullableInt($data['midgard_live_memory'] ?? null),
+            'midgard_live_disk' => $this->nullableInt($data['midgard_live_disk'] ?? null),
+            'midgard_live_bandwidth_limit' => $this->nullableInt($data['midgard_live_bandwidth_limit'] ?? null),
+            'midgard_live_backup_limit' => $this->nullableInt($data['midgard_live_backup_limit'] ?? null),
+            'midgard_live_snapshot_limit' => $this->nullableInt($data['midgard_live_snapshot_limit'] ?? null),
             'updated_at' => date('Y-m-d H:i:s'),
         ];
 
@@ -130,10 +148,21 @@ final class MetadataStore implements PasswordDispatchStore
                 $table->string('midgard_provision_state', 32)->default('installing');
                 $table->text('midgard_last_error')->nullable();
                 $table->string('midgard_password_email_sent_at', 32)->nullable();
+                $table->text('midgard_addresses')->nullable();
+                $table->string('midgard_primary_ipv4', 64)->nullable();
+                $table->string('midgard_primary_ipv6', 128)->nullable();
+                $table->bigInteger('midgard_live_cpu')->nullable();
+                $table->bigInteger('midgard_live_memory')->nullable();
+                $table->bigInteger('midgard_live_disk')->nullable();
+                $table->bigInteger('midgard_live_bandwidth_limit')->nullable();
+                $table->bigInteger('midgard_live_backup_limit')->nullable();
+                $table->bigInteger('midgard_live_snapshot_limit')->nullable();
                 $table->dateTime('created_at');
                 $table->dateTime('updated_at');
             });
         }
+
+        $this->ensureMetaColumns($schema);
 
         if (! $schema->hasTable(self::EMAIL_TABLE)) {
             $schema->create(self::EMAIL_TABLE, function ($table): void {
@@ -159,6 +188,147 @@ final class MetadataStore implements PasswordDispatchStore
             'midgard_provision_state' => 'installing',
             'midgard_last_error' => '',
             'midgard_password_email_sent_at' => '',
+            'midgard_addresses' => [],
+            'midgard_primary_ipv4' => '',
+            'midgard_primary_ipv6' => '',
+            'midgard_live_cpu' => null,
+            'midgard_live_memory' => null,
+            'midgard_live_disk' => null,
+            'midgard_live_bandwidth_limit' => null,
+            'midgard_live_backup_limit' => null,
+            'midgard_live_snapshot_limit' => null,
         ];
+    }
+
+    private function ensureMetaColumns($schema): void
+    {
+        $metaColumns = [
+            'midgard_addresses' => static function ($table): void {
+                $table->text('midgard_addresses')->nullable();
+            },
+            'midgard_primary_ipv4' => static function ($table): void {
+                $table->string('midgard_primary_ipv4', 64)->nullable();
+            },
+            'midgard_primary_ipv6' => static function ($table): void {
+                $table->string('midgard_primary_ipv6', 128)->nullable();
+            },
+            'midgard_live_cpu' => static function ($table): void {
+                $table->bigInteger('midgard_live_cpu')->nullable();
+            },
+            'midgard_live_memory' => static function ($table): void {
+                $table->bigInteger('midgard_live_memory')->nullable();
+            },
+            'midgard_live_disk' => static function ($table): void {
+                $table->bigInteger('midgard_live_disk')->nullable();
+            },
+            'midgard_live_bandwidth_limit' => static function ($table): void {
+                $table->bigInteger('midgard_live_bandwidth_limit')->nullable();
+            },
+            'midgard_live_backup_limit' => static function ($table): void {
+                $table->bigInteger('midgard_live_backup_limit')->nullable();
+            },
+            'midgard_live_snapshot_limit' => static function ($table): void {
+                $table->bigInteger('midgard_live_snapshot_limit')->nullable();
+            },
+        ];
+
+        foreach ($metaColumns as $column => $definition) {
+            if ($schema->hasColumn(self::META_TABLE, $column)) {
+                continue;
+            }
+
+            $schema->table(self::META_TABLE, static function ($table) use ($definition): void {
+                $definition($table);
+            });
+        }
+    }
+
+    /**
+     * @param mixed $value
+     */
+    private function nullableInt($value): ?int
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (is_string($value) && trim($value) === '') {
+            return null;
+        }
+
+        if (! is_numeric($value)) {
+            return null;
+        }
+
+        return (int) $value;
+    }
+
+    private function nullableIntFromRow($value): ?int
+    {
+        return $this->nullableInt($value);
+    }
+
+    /**
+     * @param mixed $addresses
+     */
+    private function encodeAddresses($addresses): string
+    {
+        if (! is_array($addresses)) {
+            return '[]';
+        }
+
+        $payload = [];
+        foreach ($addresses as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $payload[] = [
+                'id' => (int) ($row['id'] ?? 0),
+                'address' => trim((string) ($row['address'] ?? '')),
+                'type' => strtolower(trim((string) ($row['type'] ?? ''))),
+                'is_primary' => (bool) ($row['is_primary'] ?? false),
+            ];
+        }
+
+        $json = json_encode($payload, JSON_UNESCAPED_SLASHES);
+        return $json === false ? '[]' : $json;
+    }
+
+    /**
+     * @return array<int, array{id: int, address: string, type: string, is_primary: bool}>
+     */
+    private function decodeAddresses(string $json): array
+    {
+        if (trim($json) === '') {
+            return [];
+        }
+
+        $decoded = json_decode($json, true);
+        if (! is_array($decoded)) {
+            return [];
+        }
+
+        $addresses = [];
+        foreach ($decoded as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $address = trim((string) ($row['address'] ?? ''));
+            $type = strtolower(trim((string) ($row['type'] ?? '')));
+            if ($address === '' || ! in_array($type, ['ipv4', 'ipv6'], true)) {
+                continue;
+            }
+
+            $addresses[] = [
+                'id' => (int) ($row['id'] ?? 0),
+                'address' => $address,
+                'type' => $type,
+                'is_primary' => (bool) ($row['is_primary'] ?? false),
+            ];
+        }
+
+        return $addresses;
     }
 }
