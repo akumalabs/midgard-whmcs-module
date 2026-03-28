@@ -8,6 +8,7 @@ use MidgardWhmcs\Config;
 use MidgardWhmcs\MetadataStore;
 use MidgardWhmcs\MidgardApiException;
 use MidgardWhmcs\PasswordMailer;
+use MidgardWhmcs\ProvisioningNetworkService;
 use MidgardWhmcs\SsoHelper;
 use MidgardWhmcs\SyncService;
 
@@ -22,6 +23,7 @@ require_once __DIR__ . '/lib/PasswordDispatchStore.php';
 require_once __DIR__ . '/lib/MetadataStore.php';
 require_once __DIR__ . '/lib/PasswordMailer.php';
 require_once __DIR__ . '/lib/ProvisionStateMapper.php';
+require_once __DIR__ . '/lib/ProvisioningNetworkService.php';
 require_once __DIR__ . '/lib/SsoHelper.php';
 require_once __DIR__ . '/lib/SyncService.php';
 
@@ -431,6 +433,10 @@ function midgard_CreateAccount(array $params)
         if ($midgardServerId === '' || $midgardServerUuid === '') {
             return 'Midgard create response missing server ID/UUID.';
         }
+        $midgardServerIdInt = (int) $midgardServerId;
+        if ($midgardServerIdInt <= 0) {
+            return 'Midgard create response returned an invalid server ID.';
+        }
 
         $meta = $store->get($serviceId);
         $meta['midgard_user_id'] = (string) ($user['id'] ?? '');
@@ -441,6 +447,80 @@ function midgard_CreateAccount(array $params)
         $store->upsert($serviceId, $meta);
 
         SyncService::syncHostingIdentity($serviceId, $serverName, $hostname);
+
+        $ipv4EnsureResult = [
+            'ensured' => true,
+            'attempted' => false,
+            'assigned' => false,
+            'primary_ipv4' => '',
+            'error' => '',
+        ];
+
+        if ($requireIpv4) {
+            $stage = 'ensure_required_ipv4';
+            $ipv4EnsureResult = ProvisioningNetworkService::ensurePrimaryIpv4($client, $midgardServerIdInt);
+
+            try {
+                $meta = SyncService::syncFromPanel($params, $store);
+                $store->upsert($serviceId, $meta);
+            } catch (\Throwable $e) {
+                midgard_logDiagnostic('createAccount.syncAfterIpv4Enforcement.failed', [
+                    'serviceid' => $serviceId,
+                    'panel_base_url' => $panelBaseUrl,
+                    'server_id' => $midgardServerIdInt,
+                ], [
+                    'message' => $e->getMessage(),
+                ]);
+                $meta = $store->get($serviceId);
+            }
+
+            $syncedPrimaryIpv4 = trim((string) ($meta['midgard_primary_ipv4'] ?? ''));
+            if (! $ipv4EnsureResult['ensured'] && $syncedPrimaryIpv4 === '') {
+                $message = 'Provisioning blocked: required IPv4 could not be assigned after server creation.';
+                $detail = trim((string) ($ipv4EnsureResult['error'] ?? ''));
+                if ($detail !== '') {
+                    $message .= ' ' . $detail;
+                }
+
+                $rollbackError = '';
+                try {
+                    $client->terminateServer($midgardServerIdInt);
+                } catch (\Throwable $rollbackException) {
+                    $rollbackError = $rollbackException->getMessage();
+                    midgard_logDiagnostic('createAccount.rollbackTerminate.failed', [
+                        'serviceid' => $serviceId,
+                        'panel_base_url' => $panelBaseUrl,
+                        'server_id' => $midgardServerIdInt,
+                    ], [
+                        'message' => $rollbackError,
+                    ]);
+                }
+
+                $meta = $store->get($serviceId);
+                $meta['midgard_server_id'] = '';
+                $meta['midgard_server_uuid'] = '';
+                $meta['midgard_addresses'] = [];
+                $meta['midgard_primary_ipv4'] = '';
+                $meta['midgard_primary_ipv6'] = '';
+                $meta['midgard_provision_state'] = 'failed';
+                $meta['midgard_last_error'] = $rollbackError === ''
+                    ? $message
+                    : ($message . ' Rollback failed: ' . $rollbackError);
+                $store->upsert($serviceId, $meta);
+                midgard_setHostingStatus($serviceId, 'Pending');
+
+                midgard_logDiagnostic('createAccount.requiredIpv4AssignmentFailed', [
+                    'serviceid' => $serviceId,
+                    'panel_base_url' => $panelBaseUrl,
+                    'server_id' => $midgardServerIdInt,
+                ], [
+                    'ensure_result' => $ipv4EnsureResult,
+                    'rollback_error' => $rollbackError,
+                ]);
+
+                return (string) $meta['midgard_last_error'];
+            }
+        }
 
         try {
             PasswordMailer::sendOneTime($params, $store, $midgardServerUuid, $initialPassword);
@@ -637,11 +717,30 @@ function midgard_ClientArea(array $params): array
         'snapshot_limit' => Config::intOption($params, 'snapshot_limit', 0),
         'os_image_id' => Config::intOption($params, 'os_image_id', 0),
     ];
+    $midgardSpecs = SyncService::buildSpecsForClientArea($configSpecs, $meta);
+
+    $assignedIpsArray = [];
+    foreach ($addresses as $addressRow) {
+        if (! is_array($addressRow)) {
+            continue;
+        }
+        $isPrimary = (bool) ($addressRow['is_primary'] ?? false);
+        if ($isPrimary) {
+            continue;
+        }
+
+        $address = trim((string) ($addressRow['address'] ?? ''));
+        if ($address !== '') {
+            $assignedIpsArray[] = $address;
+        }
+    }
+    $assignedIpsText = implode("\n", $assignedIpsArray);
+    $primaryIp = $primaryIpv4 !== '' ? $primaryIpv4 : $primaryIpv6;
 
     return [
-        'templatefile' => 'clientarea',
+        'tabOverviewReplacementTemplate' => 'clientarea',
         'requirelogin' => true,
-        'vars' => [
+        'templateVariables' => [
             'midgardProvisionState' => $state,
             'midgardProvisionStateLabel' => $stateLabel,
             'midgardProvisionStateClass' => $stateClass,
@@ -653,7 +752,14 @@ function midgard_ClientArea(array $params): array
             'midgardIpv4Required' => $requireIpv4,
             'midgardIpv4Missing' => $ipv4Missing,
             'midgardIpv4Warning' => $ipv4Warning,
-            'midgardSpecs' => SyncService::buildSpecsForClientArea($configSpecs, $meta),
+            'midgardSpecs' => $midgardSpecs,
+            'midgardPrimaryIp' => $primaryIp,
+            'midgardAssignedIps' => $assignedIpsText,
+            'midgardAssignedIpsArray' => $assignedIpsArray,
+            'midgardServerSpecs' => $midgardSpecs,
+            'primaryIp' => $primaryIp,
+            'assignedIps' => $assignedIpsText,
+            'specs' => $midgardSpecs,
         ],
     ];
 }

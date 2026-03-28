@@ -9,22 +9,52 @@ use PHPUnit\Framework\TestCase;
 
 final class SyncServiceTest extends TestCase
 {
-    public function test_map_hosting_network_fields_ipv4_primary(): void
+    public function test_map_hosting_network_fields_primary_only_keeps_assigned_ips_empty(): void
     {
         $mapped = SyncService::mapHostingNetworkFields([
             'addresses' => [
                 ['id' => 1, 'address' => '203.0.113.10', 'type' => 'ipv4', 'is_primary' => true],
-                ['id' => 2, 'address' => '203.0.113.11', 'type' => 'ipv4', 'is_primary' => false],
             ],
             'primary_ipv4' => '203.0.113.10',
             'primary_ipv6' => '',
         ]);
 
         $this->assertSame('203.0.113.10', $mapped['dedicatedip']);
-        $this->assertSame("203.0.113.10\n203.0.113.11", $mapped['assignedips']);
+        $this->assertSame('', $mapped['assignedips']);
     }
 
-    public function test_map_hosting_network_fields_ipv6_primary_fallback(): void
+    public function test_map_hosting_network_fields_primary_plus_extra_ips_lists_only_extras(): void
+    {
+        $mapped = SyncService::mapHostingNetworkFields([
+            'addresses' => [
+                ['id' => 1, 'address' => '203.0.113.10', 'type' => 'ipv4', 'is_primary' => true],
+                ['id' => 2, 'address' => '203.0.113.11', 'type' => 'ipv4', 'is_primary' => false],
+                ['id' => 3, 'address' => '2001:db8::10', 'type' => 'ipv6', 'is_primary' => false],
+            ],
+            'primary_ipv4' => '203.0.113.10',
+            'primary_ipv6' => '',
+        ]);
+
+        $this->assertSame('203.0.113.10', $mapped['dedicatedip']);
+        $this->assertSame("203.0.113.11\n2001:db8::10", $mapped['assignedips']);
+    }
+
+    public function test_map_hosting_network_fields_dual_stack_with_single_primary_lists_only_non_primary(): void
+    {
+        $mapped = SyncService::mapHostingNetworkFields([
+            'addresses' => [
+                ['id' => 4, 'address' => '198.51.100.10', 'type' => 'ipv4', 'is_primary' => true],
+                ['id' => 5, 'address' => '2001:db8::20', 'type' => 'ipv6', 'is_primary' => false],
+            ],
+            'primary_ipv4' => '198.51.100.10',
+            'primary_ipv6' => '',
+        ]);
+
+        $this->assertSame('198.51.100.10', $mapped['dedicatedip']);
+        $this->assertSame('2001:db8::20', $mapped['assignedips']);
+    }
+
+    public function test_map_hosting_network_fields_ipv6_primary_fallback_with_no_extras(): void
     {
         $mapped = SyncService::mapHostingNetworkFields([
             'addresses' => [
@@ -35,22 +65,7 @@ final class SyncServiceTest extends TestCase
         ]);
 
         $this->assertSame('2001:db8::10', $mapped['dedicatedip']);
-        $this->assertSame('2001:db8::10', $mapped['assignedips']);
-    }
-
-    public function test_map_hosting_network_fields_dual_stack_prefers_primary_ipv4(): void
-    {
-        $mapped = SyncService::mapHostingNetworkFields([
-            'addresses' => [
-                ['id' => 4, 'address' => '198.51.100.10', 'type' => 'ipv4', 'is_primary' => true],
-                ['id' => 5, 'address' => '2001:db8::20', 'type' => 'ipv6', 'is_primary' => true],
-            ],
-            'primary_ipv4' => '198.51.100.10',
-            'primary_ipv6' => '2001:db8::20',
-        ]);
-
-        $this->assertSame('198.51.100.10', $mapped['dedicatedip']);
-        $this->assertSame("198.51.100.10\n2001:db8::20", $mapped['assignedips']);
+        $this->assertSame('', $mapped['assignedips']);
     }
 
     public function test_map_hosting_network_fields_no_addresses(): void

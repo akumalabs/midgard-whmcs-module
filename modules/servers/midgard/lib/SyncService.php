@@ -137,6 +137,10 @@ final class SyncService
                 if (! is_array($addressRow)) {
                     continue;
                 }
+                $isPrimary = (bool) ($addressRow['is_primary'] ?? false);
+                if ($isPrimary) {
+                    continue;
+                }
                 $address = trim((string) ($addressRow['address'] ?? ''));
                 if ($address !== '') {
                     $assignedIps[] = $address;
