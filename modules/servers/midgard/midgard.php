@@ -657,6 +657,11 @@ function midgard_ClientArea(array $params): array
     $store = midgard_store();
     $meta = $store->get($serviceId);
     $requireIpv4 = Config::boolOption($params, 'default_ipv4', false);
+    logModuleCall('midgard', 'clientArea.entry', [
+        'serviceid' => $serviceId,
+    ], [
+        'status' => (string) ($params['status'] ?? ''),
+    ], null, []);
 
     try {
         $meta = SyncService::syncFromPanel($params, $store);
@@ -736,31 +741,42 @@ function midgard_ClientArea(array $params): array
     }
     $assignedIpsText = implode("\n", $assignedIpsArray);
     $primaryIp = $primaryIpv4 !== '' ? $primaryIpv4 : $primaryIpv6;
+    $templateVariables = [
+        'midgardProvisionState' => $state,
+        'midgardProvisionStateLabel' => $stateLabel,
+        'midgardProvisionStateClass' => $stateClass,
+        'midgardProvisionError' => (string) ($meta['midgard_last_error'] ?? ''),
+        'midgardSsoUrl' => $ssoUrl,
+        'midgardPrimaryIpv4' => $primaryIpv4,
+        'midgardPrimaryIpv6' => $primaryIpv6,
+        'midgardAddresses' => $addresses,
+        'midgardIpv4Required' => $requireIpv4,
+        'midgardIpv4Missing' => $ipv4Missing,
+        'midgardIpv4Warning' => $ipv4Warning,
+        'midgardSpecs' => $midgardSpecs,
+        'midgardPrimaryIp' => $primaryIp,
+        'midgardAssignedIps' => $assignedIpsText,
+        'midgardAssignedIpsArray' => $assignedIpsArray,
+        'midgardServerSpecs' => $midgardSpecs,
+        'primaryIp' => $primaryIp,
+        'assignedIps' => $assignedIpsText,
+        'specs' => $midgardSpecs,
+    ];
+    logModuleCall('midgard', 'clientArea.responseKeys', [
+        'serviceid' => $serviceId,
+    ], [
+        'tabOverviewReplacementTemplate' => 'clientarea',
+        'templatefile' => 'clientarea',
+        'has_template_variables' => true,
+        'has_vars' => true,
+    ], null, []);
 
     return [
         'tabOverviewReplacementTemplate' => 'clientarea',
+        'templatefile' => 'clientarea',
         'requirelogin' => true,
-        'templateVariables' => [
-            'midgardProvisionState' => $state,
-            'midgardProvisionStateLabel' => $stateLabel,
-            'midgardProvisionStateClass' => $stateClass,
-            'midgardProvisionError' => (string) ($meta['midgard_last_error'] ?? ''),
-            'midgardSsoUrl' => $ssoUrl,
-            'midgardPrimaryIpv4' => $primaryIpv4,
-            'midgardPrimaryIpv6' => $primaryIpv6,
-            'midgardAddresses' => $addresses,
-            'midgardIpv4Required' => $requireIpv4,
-            'midgardIpv4Missing' => $ipv4Missing,
-            'midgardIpv4Warning' => $ipv4Warning,
-            'midgardSpecs' => $midgardSpecs,
-            'midgardPrimaryIp' => $primaryIp,
-            'midgardAssignedIps' => $assignedIpsText,
-            'midgardAssignedIpsArray' => $assignedIpsArray,
-            'midgardServerSpecs' => $midgardSpecs,
-            'primaryIp' => $primaryIp,
-            'assignedIps' => $assignedIpsText,
-            'specs' => $midgardSpecs,
-        ],
+        'templateVariables' => $templateVariables,
+        'vars' => $templateVariables,
     ];
 }
 
