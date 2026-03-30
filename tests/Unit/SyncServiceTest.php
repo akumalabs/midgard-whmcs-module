@@ -80,6 +80,40 @@ final class SyncServiceTest extends TestCase
         $this->assertSame('', $mapped['assignedips']);
     }
 
+    public function test_reset_hosting_network_with_updater_sends_empty_network_fields(): void
+    {
+        $capturedServiceId = 0;
+        $capturedFields = null;
+
+        SyncService::resetHostingNetworkWithUpdater(
+            55,
+            static function (int $serviceId, array $fields) use (&$capturedServiceId, &$capturedFields): void {
+                $capturedServiceId = $serviceId;
+                $capturedFields = $fields;
+            }
+        );
+
+        $this->assertSame(55, $capturedServiceId);
+        $this->assertSame([
+            'dedicatedip' => '',
+            'assignedips' => '',
+        ], $capturedFields);
+    }
+
+    public function test_reset_hosting_network_with_updater_skips_non_positive_service_id(): void
+    {
+        $called = false;
+
+        SyncService::resetHostingNetworkWithUpdater(
+            0,
+            static function () use (&$called): void {
+                $called = true;
+            }
+        );
+
+        $this->assertFalse($called);
+    }
+
     public function test_build_specs_for_client_area_prefers_live_values(): void
     {
         $specs = SyncService::buildSpecsForClientArea(

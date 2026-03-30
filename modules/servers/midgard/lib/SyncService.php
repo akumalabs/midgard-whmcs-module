@@ -116,6 +116,41 @@ final class SyncService
             ]);
     }
 
+    public static function resetHostingNetwork(int $serviceId): void
+    {
+        self::resetHostingNetworkWithUpdater(
+            $serviceId,
+            static function (int $targetServiceId, array $fields): void {
+                Capsule::table('tblhosting')
+                    ->where('id', $targetServiceId)
+                    ->update($fields);
+            }
+        );
+    }
+
+    /**
+     * @param callable(int, array{dedicatedip: string, assignedips: string}): void $updater
+     */
+    public static function resetHostingNetworkWithUpdater(int $serviceId, callable $updater): void
+    {
+        if ($serviceId <= 0) {
+            return;
+        }
+
+        $updater($serviceId, self::emptyHostingNetworkFields());
+    }
+
+    /**
+     * @return array{dedicatedip: string, assignedips: string}
+     */
+    public static function emptyHostingNetworkFields(): array
+    {
+        return [
+            'dedicatedip' => '',
+            'assignedips' => '',
+        ];
+    }
+
     /**
      * @param array{
      *   addresses: array<int, array{id: int, address: string, type: string, is_primary: bool}>,

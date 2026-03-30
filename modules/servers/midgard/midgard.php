@@ -19,6 +19,7 @@ if (! defined('WHMCS')) {
 require_once __DIR__ . '/lib/ApiClient.php';
 require_once __DIR__ . '/lib/Config.php';
 require_once __DIR__ . '/lib/IdempotencyGuard.php';
+require_once __DIR__ . '/lib/EmailTemplateGuard.php';
 require_once __DIR__ . '/lib/PasswordDispatchStore.php';
 require_once __DIR__ . '/lib/MetadataStore.php';
 require_once __DIR__ . '/lib/PasswordMailer.php';
@@ -620,6 +621,7 @@ function midgard_TerminateAccount(array $params)
         }
 
         $store->clear($serviceId);
+        SyncService::resetHostingNetwork($serviceId);
         return 'success';
     } catch (\Throwable $e) {
         return 'Terminate failed: ' . $e->getMessage();
