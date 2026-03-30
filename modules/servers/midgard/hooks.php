@@ -56,7 +56,7 @@ function midgard_hookLoadServiceContext(int $serviceId): ?array
             'tblhosting.id as serviceid',
             'tblhosting.userid as userid',
             'tblhosting.domainstatus as domainstatus',
-            'tblhosting.servertype as servertype',
+            'tblproducts.servertype as product_servertype',
             'tblclients.email as email',
             'tblclients.firstname as firstname',
             'tblclients.lastname as lastname',
@@ -81,7 +81,7 @@ function midgard_hookLoadServiceContext(int $serviceId): ?array
         return null;
     }
 
-    if (strtolower(trim((string) ($row->servertype ?? ''))) !== 'midgard') {
+    if (strtolower(trim((string) ($row->product_servertype ?? ''))) !== 'midgard') {
         return null;
     }
 
@@ -303,8 +303,9 @@ function midgard_hookResolveMidgardServiceIdForEmail(array $vars): int
         }
 
         $servertype = Capsule::table('tblhosting')
+            ->leftJoin('tblproducts', 'tblproducts.id', '=', 'tblhosting.packageid')
             ->where('id', $serviceId)
-            ->value('servertype');
+            ->value('tblproducts.servertype');
 
         if (strtolower(trim((string) ($servertype ?? ''))) === 'midgard') {
             return $serviceId;
@@ -335,7 +336,8 @@ add_hook('AfterCronJob', 1, function (): void {
     $services = Capsule::table('tblhosting')
         ->leftJoin('tblclients', 'tblclients.id', '=', 'tblhosting.userid')
         ->leftJoin('tblservers', 'tblservers.id', '=', 'tblhosting.server')
-        ->where('tblhosting.servertype', 'midgard')
+        ->leftJoin('tblproducts', 'tblproducts.id', '=', 'tblhosting.packageid')
+        ->where('tblproducts.servertype', 'midgard')
         ->whereIn('tblhosting.domainstatus', ['Active', 'Pending', 'Suspended'])
         ->select([
             'tblhosting.id as serviceid',
