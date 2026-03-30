@@ -794,9 +794,6 @@ function midgard_ClientArea(array $params): array
         'midgardAssignedIps' => $assignedIpsText,
         'midgardAssignedIpsArray' => $assignedIpsArray,
         'midgardServerSpecs' => $midgardSpecs,
-        'primaryIp' => $primaryIp,
-        'assignedIps' => $assignedIpsText,
-        'specs' => $midgardSpecs,
     ];
     logModuleCall('midgard', 'clientArea.responseKeys', [
         'serviceid' => $serviceId,
