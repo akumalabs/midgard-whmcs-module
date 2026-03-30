@@ -57,9 +57,16 @@ final class SyncService
                 $meta['midgard_live_bandwidth_limit'] = $liveResourceSummary['bandwidth_limit'];
                 $meta['midgard_live_backup_limit'] = $liveResourceSummary['backup_limit'];
                 $meta['midgard_live_snapshot_limit'] = $liveResourceSummary['snapshot_limit'];
+                $meta['midgard_runtime_status'] = self::normalizeRuntimeStatus($serverData['status'] ?? null);
 
                 if ($serverOwnerId > 0) {
                     $meta['midgard_user_id'] = (string) $serverOwnerId;
+                }
+                if ($serverName !== '') {
+                    $meta['midgard_server_name'] = $serverName;
+                }
+                if ($hostname !== '') {
+                    $meta['midgard_server_hostname'] = $hostname;
                 }
 
                 if ($serverName !== '' && $hostname !== '') {
@@ -348,5 +355,15 @@ final class SyncService
     private static function bytesToTerabytes(int $bytes): float
     {
         return round($bytes / 1024 / 1024 / 1024 / 1024, 2);
+    }
+
+    private static function normalizeRuntimeStatus(mixed $status): string
+    {
+        $normalized = strtolower(trim((string) $status));
+        if ($normalized === '') {
+            return 'unknown';
+        }
+
+        return $normalized;
     }
 }

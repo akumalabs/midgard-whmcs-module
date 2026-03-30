@@ -686,6 +686,23 @@ function midgard_ClientArea(array $params): array
         default => 'midgard-state-installing',
     };
 
+    $runtimeStatus = strtolower(trim((string) ($meta['midgard_runtime_status'] ?? 'unknown')));
+    $runtimeStatusLabel = match ($runtimeStatus) {
+        'running' => 'Running',
+        'stopped' => 'Stopped',
+        'failed' => 'Failed',
+        'error' => 'Error',
+        'installing' => 'Installing',
+        default => $runtimeStatus !== '' ? ucfirst($runtimeStatus) : 'Unknown',
+    };
+    $runtimeStatusClass = match ($runtimeStatus) {
+        'running' => 'success',
+        'stopped' => 'warning',
+        'failed', 'error' => 'danger',
+        'installing' => 'info',
+        default => 'default',
+    };
+
     $ssoUrl = null;
     try {
         if (($meta['midgard_server_uuid'] ?? '') !== '') {
@@ -745,14 +762,26 @@ function midgard_ClientArea(array $params): array
     }
     $assignedIpsText = implode("\n", $assignedIpsArray);
     $primaryIp = $primaryIpv4 !== '' ? $primaryIpv4 : $primaryIpv6;
-    $serviceHostname = trim((string) ($params['domain'] ?? ''));
+    $serviceHostname = trim((string) ($meta['midgard_server_hostname'] ?? ''));
+    if ($serviceHostname === '') {
+        $serviceHostname = trim((string) ($params['domain'] ?? ''));
+    }
+
+    $serverName = trim((string) ($meta['midgard_server_name'] ?? ''));
+    if ($serverName === '') {
+        $serverName = trim((string) ($params['username'] ?? ''));
+    }
     $templateVariables = [
         'serviceStatus' => (string) ($params['status'] ?? ''),
         'midgardProvisionState' => $state,
         'midgardProvisionStateLabel' => $stateLabel,
         'midgardProvisionStateClass' => $stateClass,
+        'midgardRuntimeStatus' => $runtimeStatus,
+        'midgardRuntimeStatusLabel' => $runtimeStatusLabel,
+        'midgardRuntimeStatusClass' => $runtimeStatusClass,
         'midgardProvisionError' => (string) ($meta['midgard_last_error'] ?? ''),
         'midgardSsoUrl' => $ssoUrl,
+        'midgardServerName' => $serverName,
         'midgardServiceHostname' => $serviceHostname,
         'midgardPrimaryIpv4' => $primaryIpv4,
         'midgardPrimaryIpv6' => $primaryIpv6,
@@ -779,15 +808,15 @@ function midgard_ClientArea(array $params): array
     logModuleCall('midgard', 'clientArea.responseKeys', [
         'serviceid' => $serviceId,
     ], [
-        'tabOverviewReplacementTemplate' => 'overview',
-        'templatefile' => 'overview',
+        'tabOverviewReplacementTemplate' => 'clientarea',
+        'templatefile' => 'clientarea',
         'has_template_variables' => true,
         'has_vars' => true,
     ], null, []);
 
     return [
-        'tabOverviewReplacementTemplate' => 'overview',
-        'templatefile' => 'overview',
+        'tabOverviewReplacementTemplate' => 'clientarea',
+        'templatefile' => 'clientarea',
         'requirelogin' => true,
         'templateVariables' => $templateVariables,
         'vars' => $templateVariables,

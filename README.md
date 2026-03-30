@@ -21,8 +21,7 @@ Private WHMCS **Server Module** for provisioning and lifecycle management agains
 
 - `modules/servers/midgard/midgard.php` module entrypoint
 - `modules/servers/midgard/lib/` Midgard client + sync + helpers
-- `modules/servers/midgard/templates/overview.tpl` WHMCS-native overview replacement UI
-- `modules/servers/midgard/templates/clientarea.tpl` legacy/compat template copy
+- `modules/servers/midgard/templates/clientarea.tpl` WHMCS-native overview replacement UI
 - `modules/servers/midgard/hooks.php` cron sync hook
 - `tests/` mapper/idempotency unit tests
 - `.github/workflows/release.yml` versioned ZIP release
