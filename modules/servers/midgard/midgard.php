@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Database\Capsule\Manager as Capsule;
 use MidgardWhmcs\ApiClient;
+use MidgardWhmcs\BillingSummaryBuilder;
 use MidgardWhmcs\Config;
 use MidgardWhmcs\MetadataStore;
 use MidgardWhmcs\MidgardApiException;
@@ -18,6 +19,7 @@ if (! defined('WHMCS')) {
 }
 
 require_once __DIR__ . '/lib/ApiClient.php';
+require_once __DIR__ . '/lib/BillingSummaryBuilder.php';
 require_once __DIR__ . '/lib/Config.php';
 require_once __DIR__ . '/lib/IdempotencyGuard.php';
 require_once __DIR__ . '/lib/EmailTemplateGuard.php';
@@ -762,6 +764,7 @@ function midgard_ClientArea(array $params): array
     }
     $assignedIpsText = implode("\n", $assignedIpsArray);
     $primaryIp = $primaryIpv4 !== '' ? $primaryIpv4 : $primaryIpv6;
+    $billingSummary = BillingSummaryBuilder::fromModuleParams($params);
     $serviceHostname = trim((string) ($meta['midgard_server_hostname'] ?? ''));
     if ($serviceHostname === '') {
         $serviceHostname = trim((string) ($params['domain'] ?? ''));
@@ -797,6 +800,12 @@ function midgard_ClientArea(array $params): array
         'primaryIp' => $primaryIp,
         'assignedIps' => $assignedIpsText,
         'specs' => $midgardSpecs,
+        'billingProduct' => $billingSummary['billingProduct'],
+        'billingRecurringAmount' => $billingSummary['billingRecurringAmount'],
+        'billingCycle' => $billingSummary['billingCycle'],
+        'billingRegistrationDate' => $billingSummary['billingRegistrationDate'],
+        'billingNextDueDate' => $billingSummary['billingNextDueDate'],
+        'billingPaymentMethod' => $billingSummary['billingPaymentMethod'],
         'groupname' => (string) ($params['groupname'] ?? ''),
         'product' => (string) ($params['product'] ?? ''),
         'recurringamount' => (string) ($params['recurringamount'] ?? ''),
