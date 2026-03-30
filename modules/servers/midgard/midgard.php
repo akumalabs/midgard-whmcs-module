@@ -8,6 +8,7 @@ use MidgardWhmcs\Config;
 use MidgardWhmcs\MetadataStore;
 use MidgardWhmcs\MidgardApiException;
 use MidgardWhmcs\PasswordMailer;
+use MidgardWhmcs\PasswordGenerator;
 use MidgardWhmcs\ProvisioningNetworkService;
 use MidgardWhmcs\SsoHelper;
 use MidgardWhmcs\SyncService;
@@ -23,6 +24,7 @@ require_once __DIR__ . '/lib/EmailTemplateGuard.php';
 require_once __DIR__ . '/lib/PasswordDispatchStore.php';
 require_once __DIR__ . '/lib/MetadataStore.php';
 require_once __DIR__ . '/lib/PasswordMailer.php';
+require_once __DIR__ . '/lib/PasswordGenerator.php';
 require_once __DIR__ . '/lib/ProvisionStateMapper.php';
 require_once __DIR__ . '/lib/ProvisioningNetworkService.php';
 require_once __DIR__ . '/lib/SsoHelper.php';
@@ -743,12 +745,15 @@ function midgard_ClientArea(array $params): array
     }
     $assignedIpsText = implode("\n", $assignedIpsArray);
     $primaryIp = $primaryIpv4 !== '' ? $primaryIpv4 : $primaryIpv6;
+    $serviceHostname = trim((string) ($params['domain'] ?? ''));
     $templateVariables = [
+        'serviceStatus' => (string) ($params['status'] ?? ''),
         'midgardProvisionState' => $state,
         'midgardProvisionStateLabel' => $stateLabel,
         'midgardProvisionStateClass' => $stateClass,
         'midgardProvisionError' => (string) ($meta['midgard_last_error'] ?? ''),
         'midgardSsoUrl' => $ssoUrl,
+        'midgardServiceHostname' => $serviceHostname,
         'midgardPrimaryIpv4' => $primaryIpv4,
         'midgardPrimaryIpv6' => $primaryIpv6,
         'midgardAddresses' => $addresses,
@@ -763,19 +768,26 @@ function midgard_ClientArea(array $params): array
         'primaryIp' => $primaryIp,
         'assignedIps' => $assignedIpsText,
         'specs' => $midgardSpecs,
+        'groupname' => (string) ($params['groupname'] ?? ''),
+        'product' => (string) ($params['product'] ?? ''),
+        'recurringamount' => (string) ($params['recurringamount'] ?? ''),
+        'billingcycle' => (string) ($params['billingcycle'] ?? ''),
+        'regdate' => (string) ($params['regdate'] ?? ''),
+        'nextduedate' => (string) ($params['nextduedate'] ?? ''),
+        'paymentmethod' => (string) ($params['paymentmethod'] ?? ''),
     ];
     logModuleCall('midgard', 'clientArea.responseKeys', [
         'serviceid' => $serviceId,
     ], [
-        'tabOverviewReplacementTemplate' => 'clientarea',
-        'templatefile' => 'clientarea',
+        'tabOverviewReplacementTemplate' => 'overview',
+        'templatefile' => 'overview',
         'has_template_variables' => true,
         'has_vars' => true,
     ], null, []);
 
     return [
-        'tabOverviewReplacementTemplate' => 'clientarea',
-        'templatefile' => 'clientarea',
+        'tabOverviewReplacementTemplate' => 'overview',
+        'templatefile' => 'overview',
         'requirelogin' => true,
         'templateVariables' => $templateVariables,
         'vars' => $templateVariables,
@@ -981,17 +993,9 @@ function midgard_store(): MetadataStore
     return $store;
 }
 
-function midgard_generatePassword(int $length = 24): string
+function midgard_generatePassword(int $length = 16): string
 {
-    $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*()_+-=';
-    $max = strlen($alphabet) - 1;
-
-    $password = '';
-    for ($i = 0; $i < $length; $i++) {
-        $password .= $alphabet[random_int(0, $max)];
-    }
-
-    return $password;
+    return PasswordGenerator::generate();
 }
 
 function midgard_clientName(array $params): string
