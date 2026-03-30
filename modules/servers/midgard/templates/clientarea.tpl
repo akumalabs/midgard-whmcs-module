@@ -1,4 +1,14 @@
 <div class="panel panel-default card mb-3">
+    <div class="panel-body card-body" style="padding: 12px 16px;">
+        {if $midgardSsoUrl}
+            <a href="{$midgardSsoUrl|escape}" target="_blank" rel="noopener" class="btn btn-primary btn-block">Open Control Panel</a>
+        {else}
+            <div class="alert alert-warning" style="margin-bottom: 0;">Control panel SSO is currently unavailable. Please refresh in a moment.</div>
+        {/if}
+    </div>
+</div>
+
+<div class="panel panel-default card mb-3">
     <div class="panel-body card-body" style="padding: 14px 16px;">
         <strong>Server Status:</strong>
         <span class="label label-{$midgardRuntimeStatusClass|default:'default'|escape}" style="margin-left: 8px;">{$midgardRuntimeStatusLabel|default:'Unknown'|escape}</span>
@@ -76,49 +86,5 @@
                 </table>
             </div>
         </div>
-    </div>
-</div>
-
-<div class="panel panel-default card mb-3">
-    <div class="panel-body card-body" style="padding: 12px 16px;">
-        {if $midgardSsoUrl}
-            <a href="{$midgardSsoUrl|escape}" target="_blank" rel="noopener" class="btn btn-primary">Open Control Panel</a>
-        {else}
-            <div class="alert alert-warning" style="margin-bottom: 0;">Control panel SSO is currently unavailable. Please refresh in a moment.</div>
-        {/if}
-    </div>
-</div>
-
-<div class="panel panel-default card mb-3">
-    <div class="panel-heading card-header">
-        <h3 class="panel-title card-title m-0">Billing Overview</h3>
-    </div>
-    <div class="panel-body card-body">
-        <table class="table table-condensed" style="margin-bottom: 0;">
-            <tr>
-                <th style="width: 30%;">Product</th>
-                <td>{$billingProduct|default:'-'|escape}</td>
-            </tr>
-            <tr>
-                <th>Recurring Amount</th>
-                <td>{$billingRecurringAmount|default:'-'|escape}</td>
-            </tr>
-            <tr>
-                <th>Billing Cycle</th>
-                <td>{$billingCycle|default:'-'|escape}</td>
-            </tr>
-            <tr>
-                <th>Registration Date</th>
-                <td>{$billingRegistrationDate|default:'-'|escape}</td>
-            </tr>
-            <tr>
-                <th>Next Due Date</th>
-                <td>{$billingNextDueDate|default:'-'|escape}</td>
-            </tr>
-            <tr>
-                <th>Payment Method</th>
-                <td>{$billingPaymentMethod|default:'-'|escape}</td>
-            </tr>
-        </table>
     </div>
 </div>
