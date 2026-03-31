@@ -9,7 +9,7 @@
 
         .midgard-clientarea .midgard-overview-panel .panel-title {
             color: #2f3337;
-            font-size: 30px;
+            font-size: 20px;
             font-weight: 500;
             line-height: 1.2;
             margin: 0;
@@ -100,11 +100,11 @@
         }
 
         .midgard-clientarea .midgard-overview-row + .midgard-overview-row {
-            margin-top: 14px;
+            margin-top: 8px;
         }
 
         .midgard-clientarea .midgard-overview-spacer {
-            height: 14px;
+            height: 12px;
         }
 
         .midgard-clientarea .midgard-overview-item {
@@ -134,10 +134,23 @@
         }
 
         .midgard-clientarea .midgard-action-panel .btn {
-            font-size: 16px;
+            background: linear-gradient(180deg, #4f63a9 0%, #44589d 100%);
+            border: 1px solid #3f5292;
+            border-radius: 6px;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 2px 4px rgba(34, 53, 114, 0.25);
+            font-size: 15px;
             font-weight: 500;
-            line-height: 1.25;
-            padding: 10px 13px;
+            letter-spacing: 0.01em;
+            line-height: 1.2;
+            padding: 10px 12px;
+            transition: transform 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+        }
+
+        .midgard-clientarea .midgard-action-panel .btn:hover,
+        .midgard-clientarea .midgard-action-panel .btn:focus {
+            background: linear-gradient(180deg, #596fb6 0%, #4b61ac 100%);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 3px 6px rgba(34, 53, 114, 0.3);
+            transform: translateY(-1px);
         }
 
         /* Primary CSS kill: hide pre-content siblings in wrappers that directly host Midgard block. */
@@ -177,11 +190,11 @@
 
         @media (max-width: 767px) {
             .midgard-clientarea .midgard-action-panel .btn {
-                font-size: 15px;
+                font-size: 14px;
             }
 
             .midgard-clientarea .midgard-overview-panel .panel-title {
-                font-size: 24px;
+                font-size: 18px;
             }
 
             .midgard-clientarea .midgard-overview-row {
@@ -287,39 +300,73 @@
     <script>
         (function () {
             function stripNativeRows(container) {
-                if (!container || !container.parentElement) {
+                if (!container) {
                     return;
                 }
 
-                var host = container.parentElement;
-                var siblings = Array.prototype.slice.call(host.children || []);
+                var current = container;
+                var maxDepth = 6;
+                while (current && current.parentElement && maxDepth > 0) {
+                    var host = current.parentElement;
+                    var siblings = Array.prototype.slice.call(host.children || []);
 
-                for (var i = 0; i < siblings.length; i++) {
-                    var node = siblings[i];
-                    if (node === container) {
-                        break;
-                    }
-                    if (!node || node.nodeType !== 1) {
-                        continue;
-                    }
-                    var text = (node.textContent || '').toLowerCase();
-                    if (text.indexOf('hostname') !== -1 || text.indexOf('primary ip') !== -1) {
-                        if (node.parentNode) {
-                            node.parentNode.removeChild(node);
+                    for (var i = 0; i < siblings.length; i++) {
+                        var node = siblings[i];
+                        if (node === current) {
+                            break;
+                        }
+                        if (!node || node.nodeType !== 1) {
+                            continue;
+                        }
+                        var text = (node.textContent || '').toLowerCase();
+                        if (text.indexOf('hostname') !== -1 || text.indexOf('primary ip') !== -1) {
+                            if (node.parentNode) {
+                                node.parentNode.removeChild(node);
+                            }
                         }
                     }
+
+                    current = host;
+                    maxDepth--;
                 }
             }
 
             function run() {
                 var container = document.querySelector('.midgard-clientarea');
+                if (!container) {
+                    return;
+                }
                 stripNativeRows(container);
             }
 
+            function startObserver() {
+                var root = document.body;
+                if (!root || typeof MutationObserver === 'undefined') {
+                    return;
+                }
+
+                var observer = new MutationObserver(function () {
+                    run();
+                });
+                observer.observe(root, { childList: true, subtree: true });
+
+                setTimeout(function () {
+                    observer.disconnect();
+                }, 2500);
+            }
+
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', run);
+                document.addEventListener('DOMContentLoaded', function () {
+                    run();
+                    setTimeout(run, 120);
+                    setTimeout(run, 450);
+                    startObserver();
+                });
             } else {
                 run();
+                setTimeout(run, 120);
+                setTimeout(run, 450);
+                startObserver();
             }
         })();
     </script>
