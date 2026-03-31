@@ -1,15 +1,15 @@
 <div class="midgard-clientarea">
     <style>
         .midgard-clientarea .midgard-status-panel .panel-body {
-            padding: 14px 18px;
+            padding: 16px 20px;
             text-align: center;
         }
 
         .midgard-clientarea .midgard-status-title {
             color: #2f3337;
-            font-size: 22px;
-            font-weight: 500;
-            margin-right: 8px;
+            font-size: 18px;
+            font-weight: 600;
+            margin-right: 6px;
             vertical-align: middle;
         }
 
@@ -18,7 +18,8 @@
             font-size: 13px;
             font-weight: 600;
             margin-left: 2px;
-            padding: 4px 10px;
+            padding: 4px 11px;
+            border-radius: 4px;
             vertical-align: middle;
         }
 
@@ -27,31 +28,24 @@
         }
 
         .midgard-clientarea .midgard-overview-panel .panel-title {
-            font-size: 20px;
+            font-size: 36px;
             font-weight: 500;
             line-height: 1.3;
         }
 
         .midgard-clientarea .midgard-overview-panel .panel-body {
-            padding: 18px 20px;
+            padding: 22px 24px;
         }
 
-        .midgard-clientarea .midgard-overview-grid {
+        .midgard-clientarea .midgard-overview-row {
             display: grid;
-            gap: 12px 24px;
+            gap: 14px 26px;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             margin: 0;
         }
 
-        .midgard-clientarea .midgard-overview-grid + .midgard-overview-grid {
-            margin-top: 16px;
-        }
-
-        .midgard-clientarea .midgard-overview-grid--two {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
-
-        .midgard-clientarea .midgard-overview-grid--three {
-            grid-template-columns: repeat(3, minmax(0, 1fr));
+        .midgard-clientarea .midgard-overview-row + .midgard-overview-row {
+            margin-top: 14px;
         }
 
         .midgard-clientarea .midgard-overview-item {
@@ -64,7 +58,7 @@
         .midgard-clientarea .midgard-overview-label {
             color: #2f3337;
             font-weight: 600;
-            min-width: 96px;
+            min-width: 116px;
             text-align: left;
             white-space: nowrap;
         }
@@ -77,33 +71,35 @@
         }
 
         .midgard-clientarea .midgard-action-panel .panel-body {
-            padding: 12px 16px;
+            padding: 14px 16px;
         }
 
         .midgard-clientarea .midgard-action-panel .btn {
-            font-size: 22px;
-            font-weight: 400;
+            font-size: 18px;
+            font-weight: 500;
             line-height: 1.25;
-            padding: 10px 14px;
+            padding: 12px 14px;
         }
 
         /* Fallback: hide theme-generated Hostname/Primary IP strip above this module block. */
-        :where(.tab-pane, .tab-content, .module-client-area, .moduleclientarea, .panel-body):has(> .midgard-clientarea) > :first-child:not(.midgard-clientarea),
-        :where(.tab-pane, .tab-content, .module-client-area, .moduleclientarea, .panel-body):has(.midgard-clientarea) > :is(.row, .table-container, .table, table, .well, .panel):first-child {
+        :where(.panel-body, .tab-pane, .tab-content, .module-client-area, .moduleclientarea):has(> .midgard-clientarea) > :not(.midgard-clientarea):not(script):not(style) {
             display: none !important;
         }
 
         @media (max-width: 767px) {
             .midgard-clientarea .midgard-status-title {
-                font-size: 20px;
+                font-size: 16px;
             }
 
             .midgard-clientarea .midgard-action-panel .btn {
-                font-size: 20px;
+                font-size: 17px;
             }
 
-            .midgard-clientarea .midgard-overview-grid--two,
-            .midgard-clientarea .midgard-overview-grid--three {
+            .midgard-clientarea .midgard-overview-panel .panel-title {
+                font-size: 30px;
+            }
+
+            .midgard-clientarea .midgard-overview-row {
                 grid-template-columns: 1fr;
             }
 
@@ -112,7 +108,7 @@
             }
 
             .midgard-clientarea .midgard-overview-label {
-                min-width: 104px;
+                min-width: 118px;
             }
         }
     </style>
@@ -137,26 +133,29 @@
             <h3 class="panel-title card-title m-0">Server Overview</h3>
         </div>
         <div class="panel-body card-body">
-            <div class="midgard-overview-grid midgard-overview-grid--two">
+            <div class="midgard-overview-row">
                 <div class="midgard-overview-item">
-                    <span class="midgard-overview-label">Server Name:</span>
+                    <span class="midgard-overview-label">Name:</span>
                     <span class="midgard-overview-value">{$midgardServerName|default:'-'|escape}</span>
                 </div>
                 <div class="midgard-overview-item">
-                    <span class="midgard-overview-label">Primary IPv4:</span>
+                    <span class="midgard-overview-label">IPv4:</span>
                     <span class="midgard-overview-value">{$midgardPrimaryIpv4|default:'-'|escape}</span>
                 </div>
+            </div>
+
+            <div class="midgard-overview-row">
                 <div class="midgard-overview-item">
                     <span class="midgard-overview-label">Hostname:</span>
                     <span class="midgard-overview-value">{$midgardServiceHostname|default:$domain|default:'-'|escape}</span>
                 </div>
                 <div class="midgard-overview-item">
-                    <span class="midgard-overview-label">Primary IPv6:</span>
+                    <span class="midgard-overview-label">IPv6:</span>
                     <span class="midgard-overview-value">{$midgardPrimaryIpv6|default:'-'|escape}</span>
                 </div>
             </div>
 
-            <div class="midgard-overview-grid midgard-overview-grid--three">
+            <div class="midgard-overview-row">
                 <div class="midgard-overview-item">
                     <span class="midgard-overview-label">CPU:</span>
                     <span class="midgard-overview-value">{$midgardSpecs.cpu|default:0|escape}</span>
@@ -165,10 +164,9 @@
                     <span class="midgard-overview-label">Disk:</span>
                     <span class="midgard-overview-value">{$midgardSpecs.disk_gb|default:0|escape} GB</span>
                 </div>
-                <div class="midgard-overview-item">
-                    <span class="midgard-overview-label">Backup Limit:</span>
-                    <span class="midgard-overview-value">{$midgardSpecs.backup_limit|default:0|escape}</span>
-                </div>
+            </div>
+
+            <div class="midgard-overview-row">
                 <div class="midgard-overview-item">
                     <span class="midgard-overview-label">RAM:</span>
                     <span class="midgard-overview-value">{$midgardSpecs.memory_gb|default:0|escape} GB</span>
@@ -177,8 +175,15 @@
                     <span class="midgard-overview-label">Bandwidth:</span>
                     <span class="midgard-overview-value">{$midgardSpecs.bandwidth_tb|default:0|escape} TB</span>
                 </div>
+            </div>
+
+            <div class="midgard-overview-row">
                 <div class="midgard-overview-item">
-                    <span class="midgard-overview-label">Snapshot Limit:</span>
+                    <span class="midgard-overview-label">Backup Slot:</span>
+                    <span class="midgard-overview-value">{$midgardSpecs.backup_limit|default:0|escape}</span>
+                </div>
+                <div class="midgard-overview-item">
+                    <span class="midgard-overview-label">Snapshot Slot:</span>
                     <span class="midgard-overview-value">{$midgardSpecs.snapshot_limit|default:0|escape}</span>
                 </div>
             </div>
