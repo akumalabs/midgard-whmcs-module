@@ -104,7 +104,7 @@
         }
 
         .midgard-clientarea .midgard-overview-spacer {
-            height: 12px;
+            height: 20px;
         }
 
         .midgard-clientarea .midgard-overview-item {
@@ -250,8 +250,8 @@
                     <span class="midgard-overview-value">{$midgardSpecs.cpu|default:0|escape}</span>
                 </div>
                 <div class="midgard-overview-item">
-                    <span class="midgard-overview-label">Disk:</span>
-                    <span class="midgard-overview-value">{$midgardSpecs.disk_gb|default:0|escape} GB</span>
+                    <span class="midgard-overview-label">Bandwidth:</span>
+                    <span class="midgard-overview-value">{$midgardSpecs.bandwidth_tb|default:0|escape} TB</span>
                 </div>
             </div>
 
@@ -261,15 +261,15 @@
                     <span class="midgard-overview-value">{$midgardSpecs.memory_gb|default:0|escape} GB</span>
                 </div>
                 <div class="midgard-overview-item">
-                    <span class="midgard-overview-label">Bandwidth:</span>
-                    <span class="midgard-overview-value">{$midgardSpecs.bandwidth_tb|default:0|escape} TB</span>
+                    <span class="midgard-overview-label">Backup Slot:</span>
+                    <span class="midgard-overview-value">{$midgardSpecs.backup_limit|default:0|escape}</span>
                 </div>
             </div>
 
             <div class="midgard-overview-row">
                 <div class="midgard-overview-item">
-                    <span class="midgard-overview-label">Backup Slot:</span>
-                    <span class="midgard-overview-value">{$midgardSpecs.backup_limit|default:0|escape}</span>
+                    <span class="midgard-overview-label">Disk:</span>
+                    <span class="midgard-overview-value">{$midgardSpecs.disk_gb|default:0|escape} GB</span>
                 </div>
                 <div class="midgard-overview-item">
                     <span class="midgard-overview-label">Snapshot Slot:</span>
