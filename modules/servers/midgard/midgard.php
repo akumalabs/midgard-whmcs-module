@@ -18,6 +18,7 @@ if (! defined('WHMCS')) {
 }
 
 require_once __DIR__ . '/lib/ApiClient.php';
+require_once __DIR__ . '/lib/CatalogCache.php';
 require_once __DIR__ . '/lib/Config.php';
 require_once __DIR__ . '/lib/IdempotencyGuard.php';
 require_once __DIR__ . '/lib/EmailTemplateGuard.php';
@@ -41,16 +42,25 @@ function midgard_MetaData(): array
 
 function midgard_ConfigOptions(): array
 {
+    $locationOptions = \MidgardWhmcs\CatalogCache::getLocationDropdownOptions();
+    $osImageOptions  = \MidgardWhmcs\CatalogCache::getOsImageDropdownOptions();
+
     return [
         'location_id' => [
-            'Type' => 'text',
-            'Size' => '16',
-            'Description' => 'Midgard location ID',
+            'Type'        => $locationOptions !== [] ? 'dropdown' : 'text',
+            'Options'     => implode(',', $locationOptions),
+            'Size'        => '16',
+            'Description' => $locationOptions !== []
+                ? 'Midgard location (click Test Connection to refresh)'
+                : 'Midgard location ID (click Test Connection on server to populate dropdown)',
         ],
         'os_image_id' => [
-            'Type' => 'text',
-            'Size' => '16',
-            'Description' => 'Midgard OS image ID',
+            'Type'        => $osImageOptions !== [] ? 'dropdown' : 'text',
+            'Options'     => implode(',', $osImageOptions),
+            'Size'        => '16',
+            'Description' => $osImageOptions !== []
+                ? 'Midgard OS image (click Test Connection to refresh)'
+                : 'Midgard OS image ID (click Test Connection on server to populate dropdown)',
         ],
         'cpu' => [
             'Type' => 'text',
@@ -111,6 +121,14 @@ function midgard_TestConnection(array $params): array
         $client = midgard_client($params);
         $client->testConnection();
 
+        // Auto-refresh the catalog cache so dropdowns are populated.
+        try {
+            \MidgardWhmcs\CatalogCache::refresh($client);
+        } catch (\Throwable $e) {
+            // Non-fatal: catalog refresh must not block connection test.
+            logModuleCall('midgard', 'testConnection.catalogRefreshFailed', [], $e->getMessage(), null, []);
+        }
+
         return ['success' => true];
     } catch (\Throwable $e) {
         return [
@@ -124,6 +142,7 @@ function midgard_AdminCustomButtonArray(): array
 {
     return [
         'Refresh from Panel' => 'RefreshFromPanel',
+        'Sync Catalog'       => 'SyncCatalog',
     ];
 }
 
@@ -979,6 +998,21 @@ function midgard_RefreshFromPanel(array $params)
             'message' => $e->getMessage(),
         ]);
         return 'Refresh failed: ' . $e->getMessage();
+    }
+}
+
+function midgard_SyncCatalog(array $params)
+{
+    try {
+        $client = midgard_client($params);
+        \MidgardWhmcs\CatalogCache::refresh($client);
+        midgard_logDiagnostic('admin.syncCatalog.success', []);
+        return 'success';
+    } catch (\Throwable $e) {
+        midgard_logDiagnostic('admin.syncCatalog.failed', [], [
+            'message' => $e->getMessage(),
+        ]);
+        return 'Catalog sync failed: ' . $e->getMessage();
     }
 }
 

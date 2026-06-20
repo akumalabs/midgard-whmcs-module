@@ -95,43 +95,80 @@ final class Config
             ? $params['configoptions']
             : [];
 
+        $value = null;
+
         if (array_key_exists($key, $configOptions)) {
-            return $configOptions[$key];
+            $value = $configOptions[$key];
         }
 
-        $normalizedKey = self::normalizeOptionKey($key);
+        if ($value === null) {
+            $normalizedKey = self::normalizeOptionKey($key);
 
-        foreach ($configOptions as $optionKey => $optionValue) {
-            if (self::normalizeOptionKey((string) $optionKey) === $normalizedKey) {
-                return $optionValue;
+            foreach ($configOptions as $optionKey => $optionValue) {
+                if (self::normalizeOptionKey((string) $optionKey) === $normalizedKey) {
+                    $value = $optionValue;
+                    break;
+                }
             }
         }
 
-        $flatKey = 'configoption_' . $key;
-        if (array_key_exists($flatKey, $params)) {
-            return $params[$flatKey];
-        }
-
-        foreach ($params as $paramKey => $paramValue) {
-            if (! is_string($paramKey) || ! str_starts_with(strtolower($paramKey), 'configoption_')) {
-                continue;
-            }
-
-            $suffix = substr($paramKey, strlen('configoption_'));
-            if (self::normalizeOptionKey($suffix) === $normalizedKey) {
-                return $paramValue;
+        if ($value === null) {
+            $flatKey = 'configoption_' . $key;
+            if (array_key_exists($flatKey, $params)) {
+                $value = $params[$flatKey];
             }
         }
 
-        $configOptionIndex = self::configOptionIndexForKey($key);
-        if ($configOptionIndex !== null) {
-            $numericKey = 'configoption' . $configOptionIndex;
-            if (array_key_exists($numericKey, $params)) {
-                return $params[$numericKey];
+        if ($value === null) {
+            foreach ($params as $paramKey => $paramValue) {
+                if (! is_string($paramKey) || ! str_starts_with(strtolower($paramKey), 'configoption_')) {
+                    continue;
+                }
+
+                $suffix = substr($paramKey, strlen('configoption_'));
+                if (self::normalizeOptionKey($suffix) === self::normalizeOptionKey($key)) {
+                    $value = $paramValue;
+                    break;
+                }
             }
         }
 
-        return null;
+        if ($value === null) {
+            $configOptionIndex = self::configOptionIndexForKey($key);
+            if ($configOptionIndex !== null) {
+                $numericKey = 'configoption' . $configOptionIndex;
+                if (array_key_exists($numericKey, $params)) {
+                    $value = $params[$numericKey];
+                }
+            }
+        }
+
+        // WHMCS dropdown and configurable options use "ID|Display Name" format.
+        // Extract just the ID portion for numeric fields like location_id / os_image_id.
+        return self::extractIdFromLabel($value);
+    }
+
+    /**
+     * If a value is in "ID|Display Name" format, return just the ID.
+     * Otherwise return the value unchanged.
+     */
+    private static function extractIdFromLabel(mixed $value): mixed
+    {
+        if (! is_string($value)) {
+            return $value;
+        }
+
+        $pipePos = strpos($value, '|');
+        if ($pipePos === false) {
+            return $value;
+        }
+
+        $idPart = trim(substr($value, 0, $pipePos));
+        if (ctype_digit($idPart)) {
+            return $idPart;
+        }
+
+        return $value;
     }
 
     private static function normalizeOptionKey(string $key): string

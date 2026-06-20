@@ -96,6 +96,26 @@ final class ApiClient
     }
 
     /**
+     * Fetch all locations for catalog dropdowns.
+     *
+     * @return array<string, mixed>
+     */
+    public function getLocations(): array
+    {
+        return $this->get('/api/v1/admin/locations');
+    }
+
+    /**
+     * Fetch all OS images for catalog dropdowns.
+     *
+     * @return array<string, mixed>
+     */
+    public function getOsImages(): array
+    {
+        return $this->get('/api/v1/admin/os-images');
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function randomName(): array
