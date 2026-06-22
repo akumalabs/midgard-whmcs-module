@@ -75,10 +75,10 @@ final class Config
         $errors = [];
 
         if ($locationId <= 0) {
-            $errors['location_id'] = 'location_id must be a positive integer in Module Settings.';
+            $errors['location_id'] = 'Location must be selected via Configurable Options. Run "Sync Catalog" on a Midgard service to generate them.';
         }
         if ($osImageId <= 0) {
-            $errors['os_image_id'] = 'os_image_id must be a positive integer in Module Settings.';
+            $errors['os_image_id'] = 'OS Image must be selected via Configurable Options. Run "Sync Catalog" on a Midgard service to generate them.';
         }
 
         return [
