@@ -20,7 +20,6 @@ if (! defined('WHMCS')) {
 require_once __DIR__ . '/lib/ApiClient.php';
 require_once __DIR__ . '/lib/CatalogCache.php';
 require_once __DIR__ . '/lib/Config.php';
-require_once __DIR__ . '/lib/ConfigOptionManager.php';
 require_once __DIR__ . '/lib/IdempotencyGuard.php';
 require_once __DIR__ . '/lib/EmailTemplateGuard.php';
 require_once __DIR__ . '/lib/PasswordDispatchStore.php';
@@ -124,7 +123,6 @@ function midgard_AdminCustomButtonArray(): array
 {
     return [
         'Refresh from Panel' => 'RefreshFromPanel',
-        'Sync Catalog'       => 'SyncCatalog',
     ];
 }
 
@@ -980,29 +978,6 @@ function midgard_RefreshFromPanel(array $params)
             'message' => $e->getMessage(),
         ]);
         return 'Refresh failed: ' . $e->getMessage();
-    }
-}
-
-function midgard_SyncCatalog(array $params)
-{
-    try {
-        $client = midgard_client($params);
-        \MidgardWhmcs\CatalogCache::refresh($client);
-
-        $productId = (int) ($params['pid'] ?? 0);
-        if ($productId > 0) {
-            \MidgardWhmcs\ConfigOptionManager::syncForProduct($productId);
-        }
-
-        midgard_logDiagnostic('admin.syncCatalog.success', [
-            'product_id' => $productId,
-        ]);
-        return 'success';
-    } catch (\Throwable $e) {
-        midgard_logDiagnostic('admin.syncCatalog.failed', [], [
-            'message' => $e->getMessage(),
-        ]);
-        return 'Catalog sync failed: ' . $e->getMessage();
     }
 }
 

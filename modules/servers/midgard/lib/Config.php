@@ -96,22 +96,28 @@ final class Config
             : [];
 
         $value = null;
+        $aliases = self::aliasesForKey($key);
 
+        // 1. Exact key match in configoptions.
         if (array_key_exists($key, $configOptions)) {
             $value = $configOptions[$key];
         }
 
+        // 2. Normalized / alias match in configoptions.
         if ($value === null) {
-            $normalizedKey = self::normalizeOptionKey($key);
-
             foreach ($configOptions as $optionKey => $optionValue) {
-                if (self::normalizeOptionKey((string) $optionKey) === $normalizedKey) {
+                $normalizedOption = self::normalizeOptionKey((string) $optionKey);
+                if (
+                    $normalizedOption === self::normalizeOptionKey($key)
+                    || in_array($normalizedOption, $aliases, true)
+                ) {
                     $value = $optionValue;
                     break;
                 }
             }
         }
 
+        // 3. configoption_{key} flat params.
         if ($value === null) {
             $flatKey = 'configoption_' . $key;
             if (array_key_exists($flatKey, $params)) {
@@ -119,6 +125,7 @@ final class Config
             }
         }
 
+        // 4. configoption_* flat params with alias matching.
         if ($value === null) {
             foreach ($params as $paramKey => $paramValue) {
                 if (! is_string($paramKey) || ! str_starts_with(strtolower($paramKey), 'configoption_')) {
@@ -126,7 +133,11 @@ final class Config
                 }
 
                 $suffix = substr($paramKey, strlen('configoption_'));
-                if (self::normalizeOptionKey($suffix) === self::normalizeOptionKey($key)) {
+                $normalizedSuffix = self::normalizeOptionKey($suffix);
+                if (
+                    $normalizedSuffix === self::normalizeOptionKey($key)
+                    || in_array($normalizedSuffix, $aliases, true)
+                ) {
                     $value = $paramValue;
                     break;
                 }
@@ -174,6 +185,32 @@ final class Config
     private static function normalizeOptionKey(string $key): string
     {
         return strtolower((string) preg_replace('/[^a-z0-9]/i', '', $key));
+    }
+
+    /**
+     * Return normalized aliases for a given internal key.
+     *
+     * This allows admins to name configurable options with human-readable
+     * names like "Locations" or "OS" instead of the exact internal key.
+     *
+     * @return list<string>
+     */
+    private static function aliasesForKey(string $key): array
+    {
+        $map = [
+            'location_id' => ['location', 'locations', 'locationid', 'loc'],
+            'os_image_id' => ['os', 'osimage', 'osimageid', 'ostemplate', 'image', 'template'],
+        ];
+
+        $normalized = self::normalizeOptionKey($key);
+
+        foreach ($map as $mapKey => $aliases) {
+            if (self::normalizeOptionKey($mapKey) === $normalized) {
+                return array_map(self::normalizeOptionKey(...), $aliases);
+            }
+        }
+
+        return [];
     }
 
     private static function configOptionIndexForKey(string $key): ?int
