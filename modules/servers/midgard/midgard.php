@@ -687,19 +687,22 @@ function midgard_ClientArea(array $params): array
 
     $runtimeStatus = strtolower(trim((string) ($meta['midgard_runtime_status'] ?? 'unknown')));
     $runtimeStatusLabel = match ($runtimeStatus) {
-        'running' => 'Running',
-        'stopped' => 'Stopped',
-        'failed' => 'Failed',
-        'error' => 'Error',
+        'running'    => 'Running',
+        'stopped'    => 'Stopped',
+        'failed'     => 'Failed',
+        'error'      => 'Error',
         'installing' => 'Installing',
-        default => $runtimeStatus !== '' ? ucfirst($runtimeStatus) : 'Unknown',
+        'suspended'  => 'Suspended',
+        default      => $runtimeStatus !== '' ? ucfirst($runtimeStatus) : 'Unknown',
     };
     $runtimeStatusClass = match ($runtimeStatus) {
-        'running' => 'success',
-        'stopped' => 'warning',
-        'failed', 'error' => 'danger',
-        'installing' => 'info',
-        default => 'default',
+        'running'    => 'success',
+        'stopped'    => 'danger',
+        'failed',
+        'error'      => 'danger',
+        'installing' => 'warning',
+        'suspended'  => 'suspended',
+        default      => 'default',
     };
 
     $ssoUrl = null;

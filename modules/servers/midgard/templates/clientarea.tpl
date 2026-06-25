@@ -68,24 +68,24 @@
             animation: midgard-pulse-red 1.6s infinite;
         }
 
-        .midgard-clientarea .midgard-status-state-info {
-            color: #0969da;
+        .midgard-clientarea .midgard-status-state-suspended {
+            color: #8250df;
         }
 
-        .midgard-clientarea .midgard-status-state-info .midgard-status-dot {
-            background: #0969da;
-            box-shadow: 0 0 0 rgba(9, 105, 218, 0.45);
-            animation: midgard-pulse-blue 1.6s infinite;
+        .midgard-clientarea .midgard-status-state-suspended .midgard-status-dot {
+            background: #8250df;
+            box-shadow: 0 0 0 rgba(130, 80, 223, 0.5);
+            animation: midgard-pulse-purple 1.6s infinite;
         }
 
         .midgard-clientarea .midgard-status-state-default {
-            color: #57606a;
+            color: #656d76;
         }
 
         .midgard-clientarea .midgard-status-state-default .midgard-status-dot {
-            background: #57606a;
-            box-shadow: 0 0 0 rgba(87, 96, 106, 0.45);
-            animation: midgard-pulse-gray 1.6s infinite;
+            background: #656d76;
+            box-shadow: 0 0 0 rgba(101, 109, 118, 0.45);
+            animation: midgard-pulse-darkgray 1.6s infinite;
         }
 
         .midgard-clientarea .midgard-overview-panel .panel-body {
@@ -176,16 +176,16 @@
             100% { box-shadow: 0 0 0 0 rgba(207, 34, 46, 0); }
         }
 
-        @keyframes midgard-pulse-blue {
-            0% { box-shadow: 0 0 0 0 rgba(9, 105, 218, 0.45); }
-            70% { box-shadow: 0 0 0 8px rgba(9, 105, 218, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(9, 105, 218, 0); }
+        @keyframes midgard-pulse-purple {
+            0% { box-shadow: 0 0 0 0 rgba(130, 80, 223, 0.5); }
+            70% { box-shadow: 0 0 0 8px rgba(130, 80, 223, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(130, 80, 223, 0); }
         }
 
-        @keyframes midgard-pulse-gray {
-            0% { box-shadow: 0 0 0 0 rgba(87, 96, 106, 0.45); }
-            70% { box-shadow: 0 0 0 8px rgba(87, 96, 106, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(87, 96, 106, 0); }
+        @keyframes midgard-pulse-darkgray {
+            0% { box-shadow: 0 0 0 0 rgba(101, 109, 118, 0.45); }
+            70% { box-shadow: 0 0 0 8px rgba(101, 109, 118, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(101, 109, 118, 0); }
         }
 
         @media (max-width: 767px) {
@@ -247,7 +247,7 @@
             <div class="midgard-overview-row">
                 <div class="midgard-overview-item">
                     <span class="midgard-overview-label">CPU:</span>
-                    <span class="midgard-overview-value">{$midgardSpecs.cpu|default:0|escape}</span>
+                    <span class="midgard-overview-value">{$midgardSpecs.cpu|default:0|escape} Core(s)</span>
                 </div>
                 <div class="midgard-overview-item">
                     <span class="midgard-overview-label">Bandwidth:</span>
