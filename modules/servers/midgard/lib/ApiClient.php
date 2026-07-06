@@ -143,9 +143,22 @@ final class ApiClient
     /**
      * @return array<string, mixed>
      */
-    public function availableIPs(int $serverId): array
+    public function availableIPs(int $serverId, string $type = '', int $perPage = 50): array
     {
-        return $this->get('/api/v1/admin/servers/' . $serverId . '/network/available-ips');
+        $query = [];
+        if ($type !== '') {
+            $query['type'] = $type;
+        }
+        if ($perPage > 0 && $perPage !== 50) {
+            $query['per_page'] = $perPage;
+        }
+
+        $path = '/api/v1/admin/servers/' . $serverId . '/network/available-ips';
+        if (!empty($query)) {
+            $path .= '?' . http_build_query($query);
+        }
+
+        return $this->get($path);
     }
 
     /**

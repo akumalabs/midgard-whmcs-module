@@ -13,18 +13,53 @@ final class ProvisioningNetworkService
      *   ensured: bool,
      *   attempted: bool,
      *   assigned: bool,
-     *   primary_ipv4: string,
+     *   primary_ip: string,
      *   error: string
      * }
      */
     public static function ensurePrimaryIpv4(ApiClient $client, int $serverId): array
     {
-        return self::ensurePrimaryIpv4WithCallbacks(
+        $result = self::ensurePrimaryIpWithCallbacks(
             static fn (int $id): array => $client->getServer($id),
-            static fn (int $id): array => $client->availableIPs($id),
+            static fn (int $id): array => $client->availableIPs($id, 'ipv4', 200),
             static fn (int $id, int $addressId): array => $client->assignIP($id, $addressId),
             static fn (int $id, int $addressId): array => $client->setPrimaryIP($id, $addressId),
-            $serverId
+            $serverId,
+            'ipv4'
+        );
+
+        // Backward-compatible key alias
+        $result['primary_ipv4'] = $result['primary_ip'];
+
+        return $result;
+    }
+
+    /**
+     * Ensure the server has a primary IPv6 subnet (/64) assigned.
+     *
+     * The panel auto-bootstraps a /128 individual from the assigned /64,
+     * making it immediately routable for cloud-init.
+     *
+     * This is best-effort: failures are returned but should NOT block
+     * the overall provisioning flow (non-blocking enforcement).
+     *
+     * @return array{
+     *   ensured: bool,
+     *   attempted: bool,
+     *   assigned: bool,
+     *   primary_ip: string,
+     *   error: string
+     * }
+     */
+    public static function ensurePrimaryIpv6(ApiClient $client, int $serverId): array
+    {
+        return self::ensurePrimaryIpWithCallbacks(
+            static fn (int $id): array => $client->getServer($id),
+            static fn (int $id): array => $client->availableIPs($id, 'ipv6', 200),
+            static fn (int $id, int $addressId): array => $client->assignIP($id, $addressId),
+            static fn (int $id, int $addressId): array => $client->setPrimaryIP($id, $addressId),
+            $serverId,
+            'ipv6'
         );
     }
 
@@ -37,7 +72,7 @@ final class ProvisioningNetworkService
      *   ensured: bool,
      *   attempted: bool,
      *   assigned: bool,
-     *   primary_ipv4: string,
+     *   primary_ip: string,
      *   error: string
      * }
      */
@@ -48,29 +83,68 @@ final class ProvisioningNetworkService
         callable $setPrimaryIp,
         int $serverId
     ): array {
+        $result = self::ensurePrimaryIpWithCallbacks(
+            $fetchServer,
+            $fetchAvailableIps,
+            $assignIp,
+            $setPrimaryIp,
+            $serverId,
+            'ipv4'
+        );
+
+        // Backward-compatible key alias
+        $result['primary_ipv4'] = $result['primary_ip'];
+
+        return $result;
+    }
+
+    /**
+     * Type-agnostic core: ensure the server has a primary IP of the given type.
+     *
+     * @param callable(int): array<string, mixed> $fetchServer
+     * @param callable(int): array<string, mixed> $fetchAvailableIps
+     * @param callable(int, int): array<string, mixed> $assignIp
+     * @param callable(int, int): array<string, mixed> $setPrimaryIp
+     * @param string $type 'ipv4' or 'ipv6'
+     * @return array{
+     *   ensured: bool,
+     *   attempted: bool,
+     *   assigned: bool,
+     *   primary_ip: string,
+     *   error: string
+     * }
+     */
+    public static function ensurePrimaryIpWithCallbacks(
+        callable $fetchServer,
+        callable $fetchAvailableIps,
+        callable $assignIp,
+        callable $setPrimaryIp,
+        int $serverId,
+        string $type
+    ): array {
         try {
             $serverResponse = $fetchServer($serverId);
-            $primaryIpv4 = self::extractPrimaryIpv4FromServerResponse($serverResponse);
+            $primaryIp = self::extractPrimaryIpFromServerResponse($serverResponse, $type);
 
-            if ($primaryIpv4 !== '') {
+            if ($primaryIp !== '') {
                 return [
                     'ensured' => true,
                     'attempted' => false,
                     'assigned' => false,
-                    'primary_ipv4' => $primaryIpv4,
+                    'primary_ip' => $primaryIp,
                     'error' => '',
                 ];
             }
 
             $availableIpsResponse = $fetchAvailableIps($serverId);
-            $addressId = self::pickFirstAvailableIpv4AddressId($availableIpsResponse);
+            $addressId = self::pickFirstAvailableAddressId($availableIpsResponse, $type);
             if ($addressId <= 0) {
                 return [
                     'ensured' => false,
                     'attempted' => false,
                     'assigned' => false,
-                    'primary_ipv4' => '',
-                    'error' => 'No available IPv4 addresses were returned by panel.',
+                    'primary_ip' => '',
+                    'error' => "No available {$type} addresses were returned by panel.",
                 ];
             }
 
@@ -78,15 +152,15 @@ final class ProvisioningNetworkService
             $setPrimaryIp($serverId, $addressId);
 
             $updatedServerResponse = $fetchServer($serverId);
-            $updatedPrimaryIpv4 = self::extractPrimaryIpv4FromServerResponse($updatedServerResponse);
+            $updatedPrimaryIp = self::extractPrimaryIpFromServerResponse($updatedServerResponse, $type);
 
-            if ($updatedPrimaryIpv4 === '') {
+            if ($updatedPrimaryIp === '') {
                 return [
                     'ensured' => false,
                     'attempted' => true,
                     'assigned' => true,
-                    'primary_ipv4' => '',
-                    'error' => 'IPv4 assignment was attempted but panel still reports no primary IPv4.',
+                    'primary_ip' => '',
+                    'error' => "{$type} assignment was attempted but panel still reports no primary {$type}.",
                 ];
             }
 
@@ -94,7 +168,7 @@ final class ProvisioningNetworkService
                 'ensured' => true,
                 'attempted' => true,
                 'assigned' => true,
-                'primary_ipv4' => $updatedPrimaryIpv4,
+                'primary_ip' => $updatedPrimaryIp,
                 'error' => '',
             ];
         } catch (\Throwable $e) {
@@ -102,16 +176,33 @@ final class ProvisioningNetworkService
                 'ensured' => false,
                 'attempted' => false,
                 'assigned' => false,
-                'primary_ipv4' => '',
+                'primary_ip' => '',
                 'error' => $e->getMessage(),
             ];
         }
     }
 
+    // ------------------------------------------------------------------
+    // Backward-compatible aliases (legacy field names)
+    // ------------------------------------------------------------------
+
     /**
      * @param array<string, mixed> $serverResponse
      */
     public static function extractPrimaryIpv4FromServerResponse(array $serverResponse): string
+    {
+        return self::extractPrimaryIpFromServerResponse($serverResponse, 'ipv4');
+    }
+
+    // ------------------------------------------------------------------
+    // Type-agnostic extraction helpers
+    // ------------------------------------------------------------------
+
+    /**
+     * @param array<string, mixed> $serverResponse
+     * @param string $type 'ipv4' or 'ipv6'
+     */
+    public static function extractPrimaryIpFromServerResponse(array $serverResponse, string $type): string
     {
         $serverData = $serverResponse['data'] ?? null;
         if (! is_array($serverData)) {
@@ -123,6 +214,8 @@ final class ProvisioningNetworkService
             return '';
         }
 
+        $flag = $type === 'ipv6' ? FILTER_FLAG_IPV6 : FILTER_FLAG_IPV4;
+
         foreach ($addresses as $row) {
             if (! is_array($row)) {
                 continue;
@@ -133,9 +226,9 @@ final class ProvisioningNetworkService
                 continue;
             }
 
-            $type = strtolower(trim((string) ($row['type'] ?? '')));
+            $rowType = strtolower(trim((string) ($row['type'] ?? '')));
             $address = trim((string) ($row['address'] ?? ''));
-            if ($type === 'ipv4' && filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) {
+            if ($rowType === $type && filter_var($address, FILTER_VALIDATE_IP, $flag) !== false) {
                 return $address;
             }
         }
@@ -145,13 +238,16 @@ final class ProvisioningNetworkService
 
     /**
      * @param array<string, mixed> $availableIpsResponse
+     * @param string $type 'ipv4' or 'ipv6'
      */
-    private static function pickFirstAvailableIpv4AddressId(array $availableIpsResponse): int
+    private static function pickFirstAvailableAddressId(array $availableIpsResponse, string $type): int
     {
         $rows = $availableIpsResponse['data'] ?? null;
         if (! is_array($rows)) {
             return 0;
         }
+
+        $flag = $type === 'ipv6' ? FILTER_FLAG_IPV6 : FILTER_FLAG_IPV4;
 
         foreach ($rows as $row) {
             if (! is_array($row)) {
@@ -159,15 +255,15 @@ final class ProvisioningNetworkService
             }
 
             $address = trim((string) ($row['address'] ?? ''));
-            $type = strtolower(trim((string) ($row['type'] ?? '')));
+            $rowType = strtolower(trim((string) ($row['type'] ?? '')));
             $id = (int) ($row['id'] ?? 0);
 
             if ($id <= 0) {
                 continue;
             }
 
-            if ($type === 'ipv4' || ($type === '' && filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false)) {
-                if (filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) {
+            if ($rowType === $type || ($rowType === '' && filter_var($address, FILTER_VALIDATE_IP, $flag) !== false)) {
+                if (filter_var($address, FILTER_VALIDATE_IP, $flag) !== false) {
                     return $id;
                 }
             }

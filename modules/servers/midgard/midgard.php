@@ -524,6 +524,31 @@ function midgard_CreateAccount(array $params)
             }
         }
 
+        // Non-blocking IPv6 enforcement: attempt to ensure a primary IPv6 subnet
+        // (/64) is assigned. The panel auto-bootstraps a /128 individual from it.
+        // Failures are logged but do NOT block provisioning.
+        try {
+            $ipv6EnsureResult = ProvisioningNetworkService::ensurePrimaryIpv6($client, $midgardServerIdInt);
+
+            if (! $ipv6EnsureResult['ensured'] && ! empty($ipv6EnsureResult['error'])) {
+                midgard_logDiagnostic('createAccount.ipv6Enforcement.skipped', [
+                    'serviceid' => $serviceId,
+                    'panel_base_url' => $panelBaseUrl,
+                    'server_id' => $midgardServerIdInt,
+                ], [
+                    'ensure_result' => $ipv6EnsureResult,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            midgard_logDiagnostic('createAccount.ipv6Enforcement.exception', [
+                'serviceid' => $serviceId,
+                'panel_base_url' => $panelBaseUrl,
+                'server_id' => $midgardServerIdInt,
+            ], [
+                'message' => $e->getMessage(),
+            ]);
+        }
+
         try {
             PasswordMailer::sendOneTime($params, $store, $midgardServerUuid, $initialPassword);
         } catch (\Throwable $e) {
