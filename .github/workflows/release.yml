@@ -40,6 +40,7 @@ jobs:
             Automated release for `${{ github.ref_name }}`.
 
       - name: Setup SSH key
+        if: ${{ secrets.API_SERVER_SSH_KEY != '' && secrets.API_SERVER_HOST != '' }}
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.API_SERVER_SSH_KEY }}" > ~/.ssh/api_server_key
@@ -47,6 +48,7 @@ jobs:
           ssh-keyscan -H ${{ secrets.API_SERVER_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Deploy to API server
+        if: ${{ secrets.API_SERVER_SSH_KEY != '' && secrets.API_SERVER_HOST != '' }}
         run: |
           VERSION="${GITHUB_REF_NAME}"
           SSH="ssh -i ~/.ssh/api_server_key -o StrictHostKeyChecking=no root@${{ secrets.API_SERVER_HOST }}"
