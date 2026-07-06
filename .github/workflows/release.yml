@@ -38,3 +38,35 @@ jobs:
           files: dist/midgard-whmcs-module-${{ github.ref_name }}.zip
           body: |
             Automated release for `${{ github.ref_name }}`.
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.API_SERVER_SSH_KEY }}" > ~/.ssh/api_server_key
+          chmod 600 ~/.ssh/api_server_key
+          ssh-keyscan -H ${{ secrets.API_SERVER_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy to API server
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          SSH="ssh -i ~/.ssh/api_server_key -o StrictHostKeyChecking=no root@${{ secrets.API_SERVER_HOST }}"
+          SCP="scp -i ~/.ssh/api_server_key -o StrictHostKeyChecking=no"
+
+          # Ensure directory exists
+          $SSH "mkdir -p /var/www/midgard-api/storage/app/releases/whmcs"
+
+          # Upload ZIP
+          $SCP "dist/midgard-whmcs-module-${VERSION}.zip" \
+            root@${{ secrets.API_SERVER_HOST }}:/var/www/midgard-api/storage/app/releases/whmcs/"${VERSION}.zip"
+
+          # Set latest symlink + permissions
+          $SSH "cd /var/www/midgard-api/storage/app/releases/whmcs \
+            && ln -sf ${VERSION}.zip latest.zip \
+            && chown -R www-data:www-data /var/www/midgard-api/storage/app/releases"
+
+          # Cleanup old releases (keep last 5)
+          $SSH "cd /var/www/midgard-api/storage/app/releases/whmcs \
+            && ls -t *.zip | grep -v latest | tail -n +6 | xargs -r rm -f \
+            && echo 'Cleaned up old releases'"
+
+          echo "✓ Released ${VERSION} → latest.zip"
