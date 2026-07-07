@@ -7,9 +7,14 @@ namespace MidgardWhmcs;
 final class PasswordMailer
 {
     /**
+     * Send the one-time credentials email, injecting:
+     *   - Midgard-specific variables (midgard_*, server_password, server_primary_ipv4/v6)
+     *   - Standard WHMCS merge field aliases (service_password, service_dedicated_ip)
+     *     so that stock WHMCS email templates also render credentials correctly.
+     *
      * @param array<string, mixed> $params
      */
-    public static function sendOneTime(array $params, PasswordDispatchStore $store, string $serverUuid, string $password): void
+    public static function sendOneTime(array $params, MetadataStore $store, string $serverUuid, string $password): void
     {
         $serviceId = (int) ($params['serviceid'] ?? 0);
         if ($serviceId <= 0 || trim($serverUuid) === '' || trim($password) === '') {
@@ -32,8 +37,28 @@ final class PasswordMailer
                 throw new \RuntimeException('Unable to send credentials email: missing service/client ID.');
             }
 
+            // Pull the latest synced metadata for canonical primary IPs.
+            $meta = $store->get($serviceId);
+            $primaryIpv4 = trim((string) ($meta['midgard_primary_ipv4'] ?? ''));
+            $primaryIpv6 = trim((string) ($meta['midgard_primary_ipv6'] ?? ''));
+
+            // The dedicated IP for standard WHMCS templates defaults to the
+            // canonical primary (IPv4 preferred, IPv6 fallback).
+            $dedicatedIp = $primaryIpv4 !== '' ? $primaryIpv4 : $primaryIpv6;
+
             $customVars = base64_encode(serialize([
+                // Midgard-native keys (existing templates)
                 'midgard_server_password' => $password,
+                'midgard_primary_ipv4' => $primaryIpv4,
+                'midgard_primary_ipv6' => $primaryIpv6,
+
+                // Standard WHMCS merge field aliases so stock templates
+                // (e.g., "Hosting Account Welcome Email") render correctly.
+                'service_password' => $password,
+                'service_dedicated_ip' => $dedicatedIp,
+
+                // Legacy alias kept for backward compatibility.
+                'server_password' => $password,
             ]));
 
             $attempts = [];

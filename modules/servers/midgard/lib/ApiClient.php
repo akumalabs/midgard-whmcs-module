@@ -180,6 +180,19 @@ final class ApiClient
     }
 
     /**
+     * Normalize primary IP assignment using canonical priority (IPv4 > IPv6).
+     *
+     * This is the single source-of-truth call to enforce consistent primary
+     * IP state after any bulk or sequential assignment operation.
+     *
+     * @return array<string, mixed>
+     */
+    public function normalizePrimaryIp(int $serverId): array
+    {
+        return $this->post('/api/v1/admin/servers/' . $serverId . '/normalize-primary-ip', []);
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function installProgress(int $serverId): array

@@ -45,16 +45,28 @@ final class EmailTemplateGuard
     }
 
     /**
+     * Accepted password key aliases, in priority order:
+     *   1. midgard_server_password (Midgard-native)
+     *   2. service_password        (standard WHMCS merge field)
+     *   3. server_password         (legacy alias)
+     */
+    private const PASSWORD_KEYS = [
+        'midgard_server_password',
+        'service_password',
+        'server_password',
+    ];
+
+    /**
      * @param array<string, mixed> $hookVars
      */
     private static function extractPassword(array $hookVars): string
     {
-        $fromMergeFields = self::extractNamedValue($hookVars['mergefields'] ?? null, 'midgard_server_password');
+        $fromMergeFields = self::extractNamedValue($hookVars['mergefields'] ?? null, self::PASSWORD_KEYS);
         if ($fromMergeFields !== '') {
             return $fromMergeFields;
         }
 
-        $fromCustomVarsArray = self::extractNamedValue($hookVars['customvars'] ?? null, 'midgard_server_password');
+        $fromCustomVarsArray = self::extractNamedValue($hookVars['customvars'] ?? null, self::PASSWORD_KEYS);
         if ($fromCustomVarsArray !== '') {
             return $fromCustomVarsArray;
         }
@@ -64,7 +76,7 @@ final class EmailTemplateGuard
             $decoded = @base64_decode($customVarsRaw, true);
             if ($decoded !== false) {
                 $unserialized = @unserialize($decoded, ['allowed_classes' => false]);
-                $decodedValue = self::extractNamedValue($unserialized, 'midgard_server_password');
+                $decodedValue = self::extractNamedValue($unserialized, self::PASSWORD_KEYS);
                 if ($decodedValue !== '') {
                     return $decodedValue;
                 }
@@ -76,16 +88,18 @@ final class EmailTemplateGuard
 
     /**
      * @param mixed $source
+     * @param string[] $keys
      */
-    private static function extractNamedValue($source, string $key): string
+    private static function extractNamedValue($source, array $keys): string
     {
         if (! is_array($source)) {
             return '';
         }
 
-        $target = self::normalizeKey($key);
+        $targets = array_map('self::normalizeKey', $keys);
         foreach ($source as $rowKey => $rowValue) {
-            if (self::normalizeKey((string) $rowKey) !== $target) {
+            $normalizedKey = self::normalizeKey((string) $rowKey);
+            if (! in_array($normalizedKey, $targets, true)) {
                 continue;
             }
 

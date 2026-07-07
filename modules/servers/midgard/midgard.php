@@ -549,6 +549,46 @@ function midgard_CreateAccount(array $params)
             ]);
         }
 
+        // Canonical normalization: ensure the panel's primary IP follows the
+        // IPv4 > IPv6 priority. This runs AFTER all sequential assignments
+        // to resolve any race between ensurePrimaryIpv4 and ensurePrimaryIpv6.
+        // Non-blocking: failures are logged but do NOT block provisioning.
+        try {
+            $normalizeResult = ProvisioningNetworkService::normalizePrimaryIp($client, $midgardServerIdInt);
+
+            if (! $normalizeResult['normalized'] && ! empty($normalizeResult['error'])) {
+                midgard_logDiagnostic('createAccount.normalizePrimaryIp.failed', [
+                    'serviceid' => $serviceId,
+                    'panel_base_url' => $panelBaseUrl,
+                    'server_id' => $midgardServerIdInt,
+                ], [
+                    'normalize_result' => $normalizeResult,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            midgard_logDiagnostic('createAccount.normalizePrimaryIp.exception', [
+                'serviceid' => $serviceId,
+                'panel_base_url' => $panelBaseUrl,
+                'server_id' => $midgardServerIdInt,
+            ], [
+                'message' => $e->getMessage(),
+            ]);
+        }
+
+        // Refresh panel metadata so emails reflect the canonical primary IP and
+        // the latest network state before credential dispatch.
+        try {
+            $meta = SyncService::syncFromPanel($params, $store);
+        } catch (\Throwable $e) {
+            midgard_logDiagnostic('createAccount.syncBeforeEmail.exception', [
+                'serviceid' => $serviceId,
+                'panel_base_url' => $panelBaseUrl,
+                'server_id' => $midgardServerIdInt,
+            ], [
+                'message' => $e->getMessage(),
+            ]);
+        }
+
         try {
             PasswordMailer::sendOneTime($params, $store, $midgardServerUuid, $initialPassword);
         } catch (\Throwable $e) {

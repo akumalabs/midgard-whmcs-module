@@ -17,7 +17,7 @@ namespace MidgardWhmcs {
 
 namespace MidgardWhmcs\Tests\Unit {
 
-    use MidgardWhmcs\PasswordDispatchStore;
+    use MidgardWhmcs\MetadataStore;
     use MidgardWhmcs\PasswordMailer;
     use PHPUnit\Framework\TestCase;
 
@@ -51,7 +51,11 @@ namespace MidgardWhmcs\Tests\Unit {
         }
     }
 
-    final class FakePasswordDispatchStore implements PasswordDispatchStore
+    /**
+     * Fake MetadataStore that allows tests to inject IP metadata
+     * for credential rendering without touching the database.
+     */
+    final class FakeMetadataStore extends MetadataStore
     {
         /** @var array<int, array<string, mixed>> */
         public array $claims = [];
@@ -61,6 +65,28 @@ namespace MidgardWhmcs\Tests\Unit {
 
         /** @var array<int, string> */
         public array $released = [];
+
+        /** @var array<string, mixed> */
+        private array $meta = [
+            'midgard_primary_ipv4' => '',
+            'midgard_primary_ipv6' => '',
+        ];
+
+        /**
+         * @param array<string, mixed> $data
+         */
+        public function setMeta(array $data): void
+        {
+            $this->meta = array_merge($this->meta, $data);
+        }
+
+        /**
+         * @return array<string, mixed>
+         */
+        public function get(int $serviceId): array
+        {
+            return $this->meta;
+        }
 
         public function claimPasswordDispatch(int $serviceId, string $serverUuid): ?string
         {
@@ -95,7 +121,7 @@ namespace MidgardWhmcs\Tests\Unit {
 
         public function test_send_one_time_uses_service_id_first(): void
         {
-            $store = new FakePasswordDispatchStore();
+            $store = new FakeMetadataStore();
             PasswordMailerLocalApiSpy::$responses = [
                 ['result' => 'success'],
             ];
@@ -110,12 +136,12 @@ namespace MidgardWhmcs\Tests\Unit {
             $this->assertSame(123, PasswordMailerLocalApiSpy::$calls[0]['values']['id']);
             $this->assertCount(1, $store->finalized);
             $this->assertCount(0, $store->released);
-            $this->assertSame('SecretPass123!', $this->extractPasswordFromCall(0));
+            $this->assertSame('SecretPass123!', $this->extractVarFromCall(0, 'midgard_server_password'));
         }
 
         public function test_send_one_time_falls_back_to_client_id_when_service_attempt_fails(): void
         {
-            $store = new FakePasswordDispatchStore();
+            $store = new FakeMetadataStore();
             PasswordMailerLocalApiSpy::$responses = [
                 ['result' => 'error', 'message' => 'Template type mismatch'],
                 ['result' => 'success'],
@@ -131,12 +157,12 @@ namespace MidgardWhmcs\Tests\Unit {
             $this->assertSame(654, PasswordMailerLocalApiSpy::$calls[1]['values']['id']);
             $this->assertCount(1, $store->finalized);
             $this->assertCount(0, $store->released);
-            $this->assertSame('AnotherPass456!', $this->extractPasswordFromCall(1));
+            $this->assertSame('AnotherPass456!', $this->extractVarFromCall(1, 'midgard_server_password'));
         }
 
         public function test_send_one_time_releases_dispatch_when_all_attempts_fail(): void
         {
-            $store = new FakePasswordDispatchStore();
+            $store = new FakeMetadataStore();
             PasswordMailerLocalApiSpy::$responses = [
                 ['result' => 'error', 'message' => 'Service send failed'],
                 ['result' => 'error', 'message' => 'Client send failed'],
@@ -158,15 +184,63 @@ namespace MidgardWhmcs\Tests\Unit {
             }
         }
 
-        private function extractPasswordFromCall(int $callIndex): string
+        public function test_send_one_time_injects_primary_ips_and_aliases(): void
+        {
+            $store = new FakeMetadataStore();
+            $store->setMeta([
+                'midgard_primary_ipv4' => '203.0.113.10',
+                'midgard_primary_ipv6' => '2001:db8::1',
+            ]);
+
+            PasswordMailerLocalApiSpy::$responses = [
+                ['result' => 'success'],
+            ];
+
+            PasswordMailer::sendOneTime([
+                'serviceid' => 999,
+                'userid' => 1000,
+            ], $store, 'server-uuid', 'IpInjectionPass!');
+
+            $this->assertSame('IpInjectionPass!', $this->extractVarFromCall(0, 'midgard_server_password'));
+            $this->assertSame('IpInjectionPass!', $this->extractVarFromCall(0, 'service_password'));
+            $this->assertSame('IpInjectionPass!', $this->extractVarFromCall(0, 'server_password'));
+            $this->assertSame('203.0.113.10', $this->extractVarFromCall(0, 'midgard_primary_ipv4'));
+            $this->assertSame('2001:db8::1', $this->extractVarFromCall(0, 'midgard_primary_ipv6'));
+            $this->assertSame('203.0.113.10', $this->extractVarFromCall(0, 'service_dedicated_ip'));
+        }
+
+        public function test_send_one_time_dedicated_ip_falls_back_to_ipv6_when_no_ipv4(): void
+        {
+            $store = new FakeMetadataStore();
+            $store->setMeta([
+                'midgard_primary_ipv4' => '',
+                'midgard_primary_ipv6' => '2001:db8::5',
+            ]);
+
+            PasswordMailerLocalApiSpy::$responses = [
+                ['result' => 'success'],
+            ];
+
+            PasswordMailer::sendOneTime([
+                'serviceid' => 432,
+                'userid' => 765,
+            ], $store, 'server-uuid', 'Ipv6OnlyPass!');
+
+            $this->assertSame('2001:db8::5', $this->extractVarFromCall(0, 'service_dedicated_ip'));
+        }
+
+        /**
+         * @return mixed
+         */
+        private function extractVarFromCall(int $callIndex, string $key)
         {
             $encodedVars = (string) (PasswordMailerLocalApiSpy::$calls[$callIndex]['values']['customvars'] ?? '');
-            $decodedVars = @unserialize(base64_decode($encodedVars), ['allowed_classes' => false]);
+            $decodedVars = @unserialize((string) base64_decode($encodedVars), ['allowed_classes' => false]);
             if (! is_array($decodedVars)) {
-                return '';
+                return null;
             }
 
-            return (string) ($decodedVars['midgard_server_password'] ?? '');
+            return $decodedVars[$key] ?? null;
         }
     }
 }

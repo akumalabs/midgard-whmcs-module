@@ -64,6 +64,51 @@ final class ProvisioningNetworkService
     }
 
     /**
+     * Normalize the primary IP assignment on the panel using canonical priority.
+     *
+     * This MUST be called once after all sequential ensurePrimaryIpv4/ensurePrimaryIpv6
+     * assignments complete. It delegates to the panel's authoritative endpoint which
+     * enforces: IPv4 > IPv6 subnet priority, and syncs the result to Proxmox cloud-init.
+     *
+     * Non-blocking: failures are logged but do not abort the caller's flow.
+     *
+     * @return array{
+     *   normalized: bool,
+     *   primary_ip: string,
+     *   error: string
+     * }
+     */
+    public static function normalizePrimaryIp(ApiClient $client, int $serverId): array
+    {
+        try {
+            $response = $client->normalizePrimaryIp($serverId);
+            $data = $response['data'] ?? null;
+
+            if (! is_array($data)) {
+                return [
+                    'normalized' => false,
+                    'primary_ip' => '',
+                    'error' => 'Panel normalize-primary-ip returned no data.',
+                ];
+            }
+
+            $address = trim((string) ($data['address'] ?? ''));
+
+            return [
+                'normalized' => true,
+                'primary_ip' => $address,
+                'error' => '',
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'normalized' => false,
+                'primary_ip' => '',
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
      * @param callable(int): array<string, mixed> $fetchServer
      * @param callable(int): array<string, mixed> $fetchAvailableIps
      * @param callable(int, int): array<string, mixed> $assignIp
