@@ -279,6 +279,19 @@ final class SyncService
             }
         }
 
+        // Fallback: normalizePrimaryIp correctly de-marks IPv6 as non-primary
+        // when IPv4 is present.  The IPv6 is still assigned and routable — it
+        // just isn't flagged is_primary.  Scan all addresses again for ANY IPv6
+        // so email templates always render the actual address.
+        if ($primaryIpv6 === '') {
+            foreach ($addresses as $addressRow) {
+                if (($addressRow['type'] ?? '') === 'ipv6') {
+                    $primaryIpv6 = $addressRow['address'];
+                    break;
+                }
+            }
+        }
+
         return [
             'addresses' => $addresses,
             'primary_ipv4' => $primaryIpv4,

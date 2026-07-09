@@ -118,25 +118,49 @@ add_hook('EmailPreSend', 1, function (array $vars): array {
             return [];
         }
 
-        $templateName = midgard_hookResolveConfiguredTemplateForService($serviceId);
-        $decision = EmailTemplateGuard::evaluateCredentialsTemplateSend($vars, $templateName);
+        $configuredTemplate = midgard_hookResolveConfiguredTemplateForService($serviceId);
 
-        if (! $decision['block']) {
-            return [];
+        // Guard 1: Block our own configured template if it lacks a password.
+        $decision = EmailTemplateGuard::evaluateCredentialsTemplateSend($vars, $configuredTemplate);
+        if ($decision['block']) {
+            logModuleCall('midgard', 'emailGuard.blockedBlankCredentialsTemplate', [
+                'serviceid' => $serviceId,
+                'userid' => (int) ($vars['userid'] ?? 0),
+                'relid' => (int) ($vars['relid'] ?? 0),
+                'messagename' => (string) ($vars['messagename'] ?? ''),
+            ], [
+                'reason' => $decision['reason'],
+                'matches_template' => $decision['matches_template'],
+                'password_present' => $decision['password_present'],
+            ], null, []);
+
+            return ['abortsend' => true];
         }
 
-        logModuleCall('midgard', 'emailGuard.blockedBlankCredentialsTemplate', [
-            'serviceid' => $serviceId,
-            'userid' => (int) ($vars['userid'] ?? 0),
-            'relid' => (int) ($vars['relid'] ?? 0),
-            'messagename' => (string) ($vars['messagename'] ?? ''),
-        ], [
-            'reason' => $decision['reason'],
-            'matches_template' => $decision['matches_template'],
-            'password_present' => $decision['password_present'],
-        ], null, []);
+        // Guard 2: Block WHMCS's built-in "Hosting Account Welcome Email" for
+        // Midgard services. WHMCS auto-fires this when the service reaches Active,
+        // but it lacks all Midgard custom variables (IPs, password). Our
+        // PasswordMailer already sent a complete credentials email earlier in the
+        // provisioning flow, so this default template would only confuse the customer.
+        // We allow re-sends (e.g. admin manually sending it again from the UI) by
+        // checking that the mergefields don't already contain our password.
+        $messageName = trim((string) ($vars['messagename'] ?? $vars['messageName'] ?? ''));
+        $isWhmcsDefaultWelcome = EmailTemplateGuard::isWhmcsDefaultWelcomeTemplate($messageName);
 
-        return ['abortsend' => true];
+        if ($isWhmcsDefaultWelcome && ! EmailTemplateGuard::hasMidgardPasswordInVars($vars)) {
+            logModuleCall('midgard', 'emailGuard.blockedDefaultWhmcsWelcome', [
+                'serviceid' => $serviceId,
+                'userid' => (int) ($vars['userid'] ?? 0),
+                'relid' => (int) ($vars['relid'] ?? 0),
+                'messagename' => $messageName,
+            ], [
+                'reason' => 'Blocked WHMCS default welcome email for Midgard service — Midgard sends its own credentials email.',
+            ], null, []);
+
+            return ['abortsend' => true];
+        }
+
+        return [];
     } catch (\Throwable $e) {
         logModuleCall('midgard', 'emailGuard.error', [
             'userid' => (int) ($vars['userid'] ?? 0),

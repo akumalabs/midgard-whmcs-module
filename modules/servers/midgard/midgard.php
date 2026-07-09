@@ -462,22 +462,12 @@ function midgard_CreateAccount(array $params)
             $stage = 'ensure_required_ipv4';
             $ipv4EnsureResult = ProvisioningNetworkService::ensurePrimaryIpv4($client, $midgardServerIdInt);
 
-            try {
-                $meta = SyncService::syncFromPanel($params, $store);
-                $store->upsert($serviceId, $meta);
-            } catch (\Throwable $e) {
-                midgard_logDiagnostic('createAccount.syncAfterIpv4Enforcement.failed', [
-                    'serviceid' => $serviceId,
-                    'panel_base_url' => $panelBaseUrl,
-                    'server_id' => $midgardServerIdInt,
-                ], [
-                    'message' => $e->getMessage(),
-                ]);
-                $meta = $store->get($serviceId);
-            }
-
-            $syncedPrimaryIpv4 = trim((string) ($meta['midgard_primary_ipv4'] ?? ''));
-            if (! $ipv4EnsureResult['ensured'] && $syncedPrimaryIpv4 === '') {
+            // Sync is deferred to the single consolidated call after all network
+            // operations to reduce API round-trips.  ensurePrimaryIpv4 already
+            // verifies assignment via its own getServer calls, so we only need
+            // to check the direct result.
+            $ensuredIpv4 = trim((string) ($ipv4EnsureResult['primary_ip'] ?? ''));
+            if (! $ipv4EnsureResult['ensured'] && $ensuredIpv4 === '') {
                 $message = 'Provisioning blocked: required IPv4 could not be assigned after server creation.';
                 $detail = trim((string) ($ipv4EnsureResult['error'] ?? ''));
                 if ($detail !== '') {
@@ -575,8 +565,10 @@ function midgard_CreateAccount(array $params)
             ]);
         }
 
-        // Refresh panel metadata so emails reflect the canonical primary IP and
-        // the latest network state before credential dispatch.
+        // Single consolidated sync: refresh panel metadata once after ALL
+        // network operations complete so all canonical IPs are hydrated
+        // before credential dispatch.  Eliminates redundant intermediate
+        // syncs that added ~2-3 round-trips to the provisioning flow.
         try {
             $meta = SyncService::syncFromPanel($params, $store);
         } catch (\Throwable $e) {

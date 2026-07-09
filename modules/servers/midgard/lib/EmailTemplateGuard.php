@@ -113,4 +113,31 @@ final class EmailTemplateGuard
     {
         return strtolower((string) preg_replace('/[^a-z0-9]/i', '', $key));
     }
+
+    /**
+     * Detect WHMCS's built-in "Hosting Account Welcome Email" and its
+     * common aliases. These are auto-fired by WHMCS when a service
+     * reaches Active status and lack Midgard-specific merge fields.
+     */
+    public static function isWhmcsDefaultWelcomeTemplate(string $messageName): bool
+    {
+        $normalized = self::normalizeKey($messageName);
+
+        return in_array($normalized, [
+            'hostingaccountwelcomeemail',
+            'hostingaccountwelcome',
+            'welcomeemail',
+        ], true);
+    }
+
+    /**
+     * Check whether the hook variables contain a Midgard password in
+     * any of the recognized key locations (mergefields, customvars,
+     * or base64-encoded customvars). Used to detect whether an email
+     * about to be sent is a re-send that already has our credentials.
+     */
+    public static function hasMidgardPasswordInVars(array $hookVars): bool
+    {
+        return self::extractPassword($hookVars) !== '';
+    }
 }
