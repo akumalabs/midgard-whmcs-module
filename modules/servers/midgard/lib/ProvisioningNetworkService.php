@@ -316,4 +316,105 @@ final class ProvisioningNetworkService
 
         return 0;
     }
-}
+
+    /**
+     * Pre-select address IDs from the panel BEFORE server creation.
+     *
+     * This replaces the legacy post-creation chain (ensurePrimaryIpv4 →
+     * ensurePrimaryIpv6 → normalizePrimaryIp) which required 5-7 sequential
+     * API round-trips per provision and was the primary source of 504
+     * gateway timeouts in the WHMCS cron path.
+     *
+     * Returns a list of address IDs to inject as address_ids[] on the
+     * createServer payload. The panel's ServerProvisioningService then
+     * performs atomic in-transaction binding via assignAddressesAtCreation().
+     *
+     * @return array{
+     *   resolved: bool,
+     *   address_ids: int[],
+     *   error: string
+     * }
+     */
+    public static function resolveAddressIdsBeforeCreation(
+        ApiClient $client,
+        int $nodeId,
+        bool $requireIpv4,
+        bool $requireIpv6
+    ): array {
+        try {
+            $response = $client->availableNodeAddresses($nodeId);
+            $rows = $response['data'] ?? null;
+            if (! is_array($rows)) {
+                return [
+                    'resolved' => false,
+                    'address_ids' => [],
+                    'error' => 'Panel returned no available-address data for node.',
+                ];
+            }
+
+            $pickedIpv4 = 0;
+            $pickedIpv6 = 0;
+            $addressIds = [];
+
+            foreach ($rows as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $id = (int) ($row['id'] ?? 0);
+                if ($id <= 0) {
+                    continue;
+                }
+                $type = strtolower(trim((string) ($row['type'] ?? '')));
+                $address = trim((string) ($row['address'] ?? ''));
+
+                if ($type === 'ipv4' && $pickedIpv4 === 0) {
+                    $flag = FILTER_FLAG_IPV4;
+                    if (filter_var($address, FILTER_VALIDATE_IP, $flag) !== false) {
+                        $addressIds[] = $id;
+                        $pickedIpv4 = $id;
+                    }
+                    continue;
+                }
+                // For IPv6 we prefer a /128 host row. The panel's
+                // getAvailable() may surface both /64 subnets and /128 hosts.
+                // Skip subnet rows — the email-rendering pipeline prefers
+                // individuals, and the panel will bootstrap a /128 from the
+                // subnet if no individual is selected.
+                if ($type === 'ipv6' && $pickedIpv6 === 0) {
+                    $cidr = (int) ($row['cidr'] ?? 0);
+                    if ($cidr !== 128) {
+                        continue;
+                    }
+                    $flag = FILTER_FLAG_IPV6;
+                    if (filter_var($address, FILTER_VALIDATE_IP, $flag) !== false) {
+                        $addressIds[] = $id;
+                        $pickedIpv6 = $id;
+                    }
+                }
+            }
+
+            // Hard-fail only when an explicitly required family is missing.
+            if ($requireIpv4 && $pickedIpv4 === 0) {
+                return [
+                    'resolved' => false,
+                    'address_ids' => [],
+                    'error' => 'No available IPv4 addresses on selected node.',
+                ];
+            }
+            // IPv6 is best-effort: if a /128 host isn't surfaced by the panel
+            // yet (e.g., before bootstrap), fall through and let the panel's
+            // legacy assign-and-bootstrap path handle it.
+
+            return [
+                'resolved' => true,
+                'address_ids' => $addressIds,
+                'error' => '',
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'resolved' => false,
+                'address_ids' => [],
+                'error' => $e->getMessage(),
+            ];
+        }
+    }}

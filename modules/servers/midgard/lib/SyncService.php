@@ -241,12 +241,14 @@ final class SyncService
         $addresses = [];
         $primaryIpv4 = '';
         $primaryIpv6 = '';
+        $primaryIpv6Subnet = '';
 
         if (! is_array($addressesRaw)) {
             return [
                 'addresses' => [],
                 'primary_ipv4' => '',
                 'primary_ipv6' => '',
+                'primary_ipv6_subnet' => '',
             ];
         }
 
@@ -259,9 +261,48 @@ final class SyncService
             $address = trim((string) ($row['address'] ?? ''));
             $type = strtolower(trim((string) ($row['type'] ?? '')));
             $isPrimary = (bool) ($row['is_primary'] ?? false);
+            $isSubnet = (bool) ($row['is_subnet'] ?? false);
 
             if ($address === '' || ! in_array($type, ['ipv4', 'ipv6'], true)) {
                 continue;
+            }
+
+            if ($type === 'ipv6' && $isSubnet) {
+                // Subnet-level IPv6 row: prefer the individual /128 hosts.
+                // Expand ipv6_individuals[] into the addresses list so email
+                // templates render routable hosts instead of the bare /64.
+                $primaryIpv6Subnet = $address;
+                if ($isPrimary && $primaryIpv6Subnet === '') {
+                    $primaryIpv6Subnet = $address;
+                }
+
+                $individuals = $row['ipv6_individuals'] ?? null;
+                if (is_array($individuals)) {
+                    foreach ($individuals as $individual) {
+                        if (! is_array($individual)) {
+                            continue;
+                        }
+                        $indAddress = trim((string) ($individual['address'] ?? ''));
+                        if ($indAddress === '') {
+                            continue;
+                        }
+                        $indIsPrimary = (bool) ($individual['is_primary'] ?? false);
+
+                        $addresses[] = [
+                            'id' => (int) ($individual['id'] ?? 0),
+                            'address' => $indAddress,
+                            'type' => 'ipv6',
+                            'is_primary' => $indIsPrimary,
+                        ];
+
+                        if ($indIsPrimary && $primaryIpv6 === '') {
+                            $primaryIpv6 = $indAddress;
+                        }
+                    }
+                    continue;
+                }
+                // No individuals supplied: fall through to legacy behaviour
+                // and surface the subnet as a regular row.
             }
 
             $addresses[] = [
@@ -279,10 +320,9 @@ final class SyncService
             }
         }
 
-        // Fallback: normalizePrimaryIp correctly de-marks IPv6 as non-primary
-        // when IPv4 is present.  The IPv6 is still assigned and routable — it
-        // just isn't flagged is_primary.  Scan all addresses again for ANY IPv6
-        // so email templates always render the actual address.
+        // Legacy fallback: scan all addresses for ANY IPv6 when none flagged
+        // primary. This preserves behaviour for panels that have not yet
+        // emitted is_subnet / ipv6_individuals metadata.
         if ($primaryIpv6 === '') {
             foreach ($addresses as $addressRow) {
                 if (($addressRow['type'] ?? '') === 'ipv6') {
@@ -296,6 +336,7 @@ final class SyncService
             'addresses' => $addresses,
             'primary_ipv4' => $primaryIpv4,
             'primary_ipv6' => $primaryIpv6,
+            'primary_ipv6_subnet' => $primaryIpv6Subnet,
         ];
     }
 

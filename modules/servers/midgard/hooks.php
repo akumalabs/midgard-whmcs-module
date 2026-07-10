@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Database\Capsule\Manager as Capsule;
+use MidgardWhmcs\Config;
 use MidgardWhmcs\EmailTemplateGuard;
 use MidgardWhmcs\MetadataStore;
 use MidgardWhmcs\SyncService;
@@ -52,10 +53,18 @@ function midgard_hookResolveConfiguredTemplateForService(int $serviceId): string
         return 'Midgard Provisioning Credentials';
     }
 
+    // WHMCS stores module config options positionally as
+    // tblproducts.configoption1..configoption24, in the order returned by
+    // midgard_ConfigOptions(). Hardcoding the column index is fragile because
+    // any reorder of midgard_ConfigOptions() silently shifts the mapping.
+    // Compute the index dynamically so it always tracks the real ordering.
+    $index = Config::configOptionIndexForKey('welcome_email_template') ?? 9;
+    $column = 'configoption' . $index;
+
     $templateName = Capsule::table('tblhosting')
         ->leftJoin('tblproducts', 'tblproducts.id', '=', 'tblhosting.packageid')
         ->where('tblhosting.id', $serviceId)
-        ->value('tblproducts.configoption11');
+        ->value('tblproducts.' . $column);
 
     $resolved = trim((string) ($templateName ?? ''));
     return $resolved !== '' ? $resolved : 'Midgard Provisioning Credentials';

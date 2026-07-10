@@ -164,6 +164,19 @@ final class ApiClient
     /**
      * @return array<string, mixed>
      */
+    /**
+     * Fetch available addresses for a node (pre-creation resolver).
+     *
+     * Used by ProvisioningNetworkService::resolveAddressIdsBeforeCreation()
+     * to pre-select address_ids[] before server creation, enabling the panel's
+     * atomic address binding path.
+     *
+     * @return array<string, mixed>
+     */
+    public function availableNodeAddresses(int $nodeId): array
+    {
+        return $this->get('/api/v1/admin/nodes/' . $nodeId . '/addresses/available');
+    }
     public function assignIP(int $serverId, int $addressId): array
     {
         return $this->post('/api/v1/admin/servers/' . $serverId . '/network/assign-ip', [

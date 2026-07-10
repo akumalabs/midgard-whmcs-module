@@ -342,6 +342,7 @@ function midgard_CreateAccount(array $params)
             'disk' => $diskBytes,
             'default_ipv4' => $requireIpv4,
             'default_ipv6' => $requireIpv6,
+            'address_ids' => $addressIds,
         ];
 
         $stage = 'preflight';
@@ -383,6 +384,36 @@ function midgard_CreateAccount(array $params)
         }
 
         $initialPassword = midgard_generatePassword();
+        // Phase 3.2: Pre-select address IDs BEFORE server creation so the
+        // panel can bind them atomically inside store()'s transaction.
+        // Eliminates the 5-7 sequential round-trips of the legacy
+        // ensurePrimaryIpv4 → ensurePrimaryIpv6 → normalizePrimaryIp chain.
+        $addressIds = [];
+        $addressResolution = ProvisioningNetworkService::resolveAddressIdsBeforeCreation(
+            $client,
+            $preflightNodeId,
+            $requireIpv4,
+            $requireIpv6
+        );
+        if ($addressResolution['resolved']) {
+            $addressIds = $addressResolution['address_ids'];
+        } elseif ($requireIpv4) {
+            // Hard requirement failed: surface immediately so the cron path
+            // doesn't burn ~30s on the create call before timing out.
+            $message = 'Provisioning blocked: ' . $addressResolution['error'];
+            $meta = $store->get($serviceId);
+            $meta['midgard_last_error'] = $message;
+            $store->upsert($serviceId, $meta);
+            midgard_setHostingStatus($serviceId, 'Pending');
+            midgard_logDiagnostic('createAccount.addressResolutionFailed', [
+                'serviceid' => $serviceId,
+                'panel_base_url' => $panelBaseUrl,
+                'node_id' => $preflightNodeId,
+            ], [
+                'resolution' => $addressResolution,
+            ]);
+            return $message;
+        }
         $createPayload = [
             'user_id' => (int) $user['id'],
             'node_id' => $preflightNodeId,
@@ -398,6 +429,7 @@ function midgard_CreateAccount(array $params)
             'os_image_id' => $osImageId,
             'default_ipv4' => $requireIpv4,
             'default_ipv6' => $requireIpv6,
+            'address_ids' => $addressIds,
         ];
 
         $stage = 'create_server';
@@ -450,119 +482,124 @@ function midgard_CreateAccount(array $params)
 
         SyncService::syncHostingIdentity($serviceId, $serverName, $hostname);
 
-        $ipv4EnsureResult = [
-            'ensured' => true,
-            'attempted' => false,
-            'assigned' => false,
-            'primary_ipv4' => '',
-            'error' => '',
-        ];
+        if (empty($addressIds)) {
+            // Legacy fallback path: panel did not receive pre-resolved address_ids,
+            // so we fall back to the sequential ensurePrimaryIpv4 →
+            // ensurePrimaryIpv6 → normalizePrimaryIp chain.
+            $ipv4EnsureResult = [
+                'ensured' => true,
+                'attempted' => false,
+                'assigned' => false,
+                'primary_ipv4' => '',
+                'error' => '',
+            ];
 
-        if ($requireIpv4) {
-            $stage = 'ensure_required_ipv4';
-            $ipv4EnsureResult = ProvisioningNetworkService::ensurePrimaryIpv4($client, $midgardServerIdInt);
+            if ($requireIpv4) {
+                $stage = 'ensure_required_ipv4';
+                $ipv4EnsureResult = ProvisioningNetworkService::ensurePrimaryIpv4($client, $midgardServerIdInt);
 
-            // Sync is deferred to the single consolidated call after all network
-            // operations to reduce API round-trips.  ensurePrimaryIpv4 already
-            // verifies assignment via its own getServer calls, so we only need
-            // to check the direct result.
-            $ensuredIpv4 = trim((string) ($ipv4EnsureResult['primary_ip'] ?? ''));
-            if (! $ipv4EnsureResult['ensured'] && $ensuredIpv4 === '') {
-                $message = 'Provisioning blocked: required IPv4 could not be assigned after server creation.';
-                $detail = trim((string) ($ipv4EnsureResult['error'] ?? ''));
-                if ($detail !== '') {
-                    $message .= ' ' . $detail;
-                }
+                // Sync is deferred to the single consolidated call after all network
+                // operations to reduce API round-trips.  ensurePrimaryIpv4 already
+                // verifies assignment via its own getServer calls, so we only need
+                // to check the direct result.
+                $ensuredIpv4 = trim((string) ($ipv4EnsureResult['primary_ip'] ?? ''));
+                if (! $ipv4EnsureResult['ensured'] && $ensuredIpv4 === '') {
+                    $message = 'Provisioning blocked: required IPv4 could not be assigned after server creation.';
+                    $detail = trim((string) ($ipv4EnsureResult['error'] ?? ''));
+                    if ($detail !== '') {
+                        $message .= ' ' . $detail;
+                    }
 
-                $rollbackError = '';
-                try {
-                    $client->terminateServer($midgardServerIdInt);
-                } catch (\Throwable $rollbackException) {
-                    $rollbackError = $rollbackException->getMessage();
-                    midgard_logDiagnostic('createAccount.rollbackTerminate.failed', [
+                    $rollbackError = '';
+                    try {
+                        $client->terminateServer($midgardServerIdInt);
+                    } catch (\Throwable $rollbackException) {
+                        $rollbackError = $rollbackException->getMessage();
+                        midgard_logDiagnostic('createAccount.rollbackTerminate.failed', [
+                            'serviceid' => $serviceId,
+                            'panel_base_url' => $panelBaseUrl,
+                            'server_id' => $midgardServerIdInt,
+                        ], [
+                            'message' => $rollbackError,
+                        ]);
+                    }
+
+                    $meta = $store->get($serviceId);
+                    $meta['midgard_server_id'] = '';
+                    $meta['midgard_server_uuid'] = '';
+                    $meta['midgard_addresses'] = [];
+                    $meta['midgard_primary_ipv4'] = '';
+                    $meta['midgard_primary_ipv6'] = '';
+                    $meta['midgard_provision_state'] = 'failed';
+                    $meta['midgard_last_error'] = $rollbackError === ''
+                        ? $message
+                        : ($message . ' Rollback failed: ' . $rollbackError);
+                    $store->upsert($serviceId, $meta);
+                    midgard_setHostingStatus($serviceId, 'Pending');
+
+                    midgard_logDiagnostic('createAccount.requiredIpv4AssignmentFailed', [
                         'serviceid' => $serviceId,
                         'panel_base_url' => $panelBaseUrl,
                         'server_id' => $midgardServerIdInt,
                     ], [
-                        'message' => $rollbackError,
+                        'ensure_result' => $ipv4EnsureResult,
+                        'rollback_error' => $rollbackError,
+                    ]);
+
+                    return (string) $meta['midgard_last_error'];
+                }
+            }
+
+            // Non-blocking IPv6 enforcement: attempt to ensure a primary IPv6 subnet
+            // (/64) is assigned. The panel auto-bootstraps a /128 individual from it.
+            // Failures are logged but do NOT block provisioning.
+            try {
+                $ipv6EnsureResult = ProvisioningNetworkService::ensurePrimaryIpv6($client, $midgardServerIdInt);
+
+                if (! $ipv6EnsureResult['ensured'] && ! empty($ipv6EnsureResult['error'])) {
+                    midgard_logDiagnostic('createAccount.ipv6Enforcement.skipped', [
+                        'serviceid' => $serviceId,
+                        'panel_base_url' => $panelBaseUrl,
+                        'server_id' => $midgardServerIdInt,
+                    ], [
+                        'ensure_result' => $ipv6EnsureResult,
                     ]);
                 }
-
-                $meta = $store->get($serviceId);
-                $meta['midgard_server_id'] = '';
-                $meta['midgard_server_uuid'] = '';
-                $meta['midgard_addresses'] = [];
-                $meta['midgard_primary_ipv4'] = '';
-                $meta['midgard_primary_ipv6'] = '';
-                $meta['midgard_provision_state'] = 'failed';
-                $meta['midgard_last_error'] = $rollbackError === ''
-                    ? $message
-                    : ($message . ' Rollback failed: ' . $rollbackError);
-                $store->upsert($serviceId, $meta);
-                midgard_setHostingStatus($serviceId, 'Pending');
-
-                midgard_logDiagnostic('createAccount.requiredIpv4AssignmentFailed', [
+            } catch (\Throwable $e) {
+                midgard_logDiagnostic('createAccount.ipv6Enforcement.exception', [
                     'serviceid' => $serviceId,
                     'panel_base_url' => $panelBaseUrl,
                     'server_id' => $midgardServerIdInt,
                 ], [
-                    'ensure_result' => $ipv4EnsureResult,
-                    'rollback_error' => $rollbackError,
+                    'message' => $e->getMessage(),
                 ]);
-
-                return (string) $meta['midgard_last_error'];
             }
-        }
 
-        // Non-blocking IPv6 enforcement: attempt to ensure a primary IPv6 subnet
-        // (/64) is assigned. The panel auto-bootstraps a /128 individual from it.
-        // Failures are logged but do NOT block provisioning.
-        try {
-            $ipv6EnsureResult = ProvisioningNetworkService::ensurePrimaryIpv6($client, $midgardServerIdInt);
+            // Canonical normalization: ensure the panel's primary IP follows the
+            // IPv4 > IPv6 priority. This runs AFTER all sequential assignments
+            // to resolve any race between ensurePrimaryIpv4 and ensurePrimaryIpv6.
+            // Non-blocking: failures are logged but do NOT block provisioning.
+            try {
+                $normalizeResult = ProvisioningNetworkService::normalizePrimaryIp($client, $midgardServerIdInt);
 
-            if (! $ipv6EnsureResult['ensured'] && ! empty($ipv6EnsureResult['error'])) {
-                midgard_logDiagnostic('createAccount.ipv6Enforcement.skipped', [
+                if (! $normalizeResult['normalized'] && ! empty($normalizeResult['error'])) {
+                    midgard_logDiagnostic('createAccount.normalizePrimaryIp.failed', [
+                        'serviceid' => $serviceId,
+                        'panel_base_url' => $panelBaseUrl,
+                        'server_id' => $midgardServerIdInt,
+                    ], [
+                        'normalize_result' => $normalizeResult,
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                midgard_logDiagnostic('createAccount.normalizePrimaryIp.exception', [
                     'serviceid' => $serviceId,
                     'panel_base_url' => $panelBaseUrl,
                     'server_id' => $midgardServerIdInt,
                 ], [
-                    'ensure_result' => $ipv6EnsureResult,
+                    'message' => $e->getMessage(),
                 ]);
             }
-        } catch (\Throwable $e) {
-            midgard_logDiagnostic('createAccount.ipv6Enforcement.exception', [
-                'serviceid' => $serviceId,
-                'panel_base_url' => $panelBaseUrl,
-                'server_id' => $midgardServerIdInt,
-            ], [
-                'message' => $e->getMessage(),
-            ]);
-        }
-
-        // Canonical normalization: ensure the panel's primary IP follows the
-        // IPv4 > IPv6 priority. This runs AFTER all sequential assignments
-        // to resolve any race between ensurePrimaryIpv4 and ensurePrimaryIpv6.
-        // Non-blocking: failures are logged but do NOT block provisioning.
-        try {
-            $normalizeResult = ProvisioningNetworkService::normalizePrimaryIp($client, $midgardServerIdInt);
-
-            if (! $normalizeResult['normalized'] && ! empty($normalizeResult['error'])) {
-                midgard_logDiagnostic('createAccount.normalizePrimaryIp.failed', [
-                    'serviceid' => $serviceId,
-                    'panel_base_url' => $panelBaseUrl,
-                    'server_id' => $midgardServerIdInt,
-                ], [
-                    'normalize_result' => $normalizeResult,
-                ]);
-            }
-        } catch (\Throwable $e) {
-            midgard_logDiagnostic('createAccount.normalizePrimaryIp.exception', [
-                'serviceid' => $serviceId,
-                'panel_base_url' => $panelBaseUrl,
-                'server_id' => $midgardServerIdInt,
-            ], [
-                'message' => $e->getMessage(),
-            ]);
         }
 
         // Single consolidated sync: refresh panel metadata once after ALL

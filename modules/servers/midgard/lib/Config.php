@@ -213,7 +213,7 @@ final class Config
         return [];
     }
 
-    private static function configOptionIndexForKey(string $key): ?int
+    public static function configOptionIndexForKey(string $key): ?int
     {
         if (! function_exists('midgard_ConfigOptions')) {
             return null;
