@@ -18,6 +18,14 @@ final class PasswordGenerator
             $password .= self::ALPHABET[random_int(0, $max)];
         }
 
+        // Guarantee at least one digit — the panel's password validation
+        // requires it, and a purely random draw misses digits ~15% of the time
+        // with a 16-char alphabet that is only ~11% digits.
+        if (! preg_match('/\d/', $password)) {
+            $pos = random_int(0, self::LENGTH - 1);
+            $password[$pos] = (string) random_int(0, 9);
+        }
+
         return $password;
     }
 
