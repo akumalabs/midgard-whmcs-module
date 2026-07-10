@@ -415,6 +415,7 @@ final class ProvisioningNetworkService
                 'resolved' => false,
                 'address_ids' => [],
                 'error' => $e->getMessage(),
+                'error_code' => 'api_error',
             ];
         }
     }}

@@ -397,9 +397,10 @@ function midgard_CreateAccount(array $params)
         );
         if ($addressResolution['resolved']) {
             $addressIds = $addressResolution['address_ids'];
-        } elseif ($requireIpv4) {
-            // Hard requirement failed: surface immediately so the cron path
-            // doesn't burn ~30s on the create call before timing out.
+        } elseif ($requireIpv4 && ($addressResolution['error_code'] ?? '') !== 'api_error') {
+            // Hard requirement failed due to genuine address unavailability
+            // (not a transient HTTP error). Surface immediately so the cron
+            // path doesn't burn ~30s on the create call before timing out.
             $message = 'Provisioning blocked: ' . $addressResolution['error'];
             $meta = $store->get($serviceId);
             $meta['midgard_last_error'] = $message;
@@ -414,6 +415,10 @@ function midgard_CreateAccount(array $params)
             ]);
             return $message;
         }
+        // Fall through: either $requireIpv4 is false (best-effort), or we hit
+        // a transient API error (error_code=api_error). In both cases, the
+        // legacy sequential chain (ensurePrimaryIpv4 → ensurePrimaryIpv6 →
+        // normalizePrimaryIp) will handle address assignment post-creation.
         $createPayload = [
             'user_id' => (int) $user['id'],
             'node_id' => $preflightNodeId,
