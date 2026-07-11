@@ -135,6 +135,29 @@ class MetadataStore implements PasswordDispatchStore
             ->delete();
     }
 
+    /**
+     * Check whether a Midgard credentials email was already successfully
+     * dispatched for this service. Used by the EmailPreSend hook to block
+     * duplicate welcome emails that WHMCS auto-fires when the service
+     * reaches Active status.
+     */
+    public function hasPasswordEmailBeenSent(int $serviceId): bool
+    {
+        $this->ensureSchema();
+
+        $meta = $this->get($serviceId);
+        $sentAt = trim((string) ($meta['midgard_password_email_sent_at'] ?? ''));
+        if ($sentAt !== '') {
+            return true;
+        }
+
+        // Also check the dispatch table directly as a fallback.
+        return Capsule::table(self::EMAIL_TABLE)
+            ->where('service_id', $serviceId)
+            ->whereNotNull('sent_at')
+            ->exists();
+    }
+
     private function ensureSchema(): void
     {
         $schema = Capsule::schema();

@@ -395,6 +395,34 @@ function midgard_CreateAccount(array $params)
             $requireIpv4,
             $requireIpv6
         );
+        $addressResolutionAttempts = 1;
+
+        // Retry once on transient API errors before falling through to the
+        // legacy sequential chain. The legacy chain is the root cause of
+        // normalizePrimaryIP 500s, PVE config race conditions, and duplicate
+        // emails, so we want to avoid it whenever possible.
+        if (! $addressResolution['resolved']
+            && ($addressResolution['error_code'] ?? '') === 'api_error'
+        ) {
+            midgard_logDiagnostic('createAccount.addressResolutionTransientError', [
+                'serviceid' => $serviceId,
+                'panel_base_url' => $panelBaseUrl,
+                'node_id' => $preflightNodeId,
+            ], [
+                'first_attempt' => $addressResolution,
+                'message' => 'Transient API error, retrying once after 2s',
+            ]);
+
+            usleep(2_000_000); // 2 seconds
+            $addressResolution = ProvisioningNetworkService::resolveAddressIdsBeforeCreation(
+                $client,
+                $preflightNodeId,
+                $requireIpv4,
+                $requireIpv6
+            );
+            $addressResolutionAttempts++;
+        }
+
         if ($addressResolution['resolved']) {
             $addressIds = $addressResolution['address_ids'];
         } elseif ($requireIpv4 && ($addressResolution['error_code'] ?? '') !== 'api_error') {
@@ -416,9 +444,23 @@ function midgard_CreateAccount(array $params)
             return $message;
         }
         // Fall through: either $requireIpv4 is false (best-effort), or we hit
-        // a transient API error (error_code=api_error). In both cases, the
-        // legacy sequential chain (ensurePrimaryIpv4 → ensurePrimaryIpv6 →
-        // normalizePrimaryIp) will handle address assignment post-creation.
+        // a transient API error (error_code=api_error) even after retry. In
+        // both cases, the legacy sequential chain (ensurePrimaryIpv4 →
+        // ensurePrimaryIpv6 → normalizePrimaryIp) will handle address
+        // assignment post-creation.
+        if (empty($addressIds)) {
+            midgard_logDiagnostic('createAccount.addressResolutionFallbackToLegacy', [
+                'serviceid' => $serviceId,
+                'panel_base_url' => $panelBaseUrl,
+                'node_id' => $preflightNodeId,
+            ], [
+                'attempts' => $addressResolutionAttempts,
+                'final_resolution' => $addressResolution,
+                'require_ipv4' => $requireIpv4,
+                'require_ipv6' => $requireIpv6,
+                'message' => 'Falling back to legacy sequential network assignment chain',
+            ]);
+        }
         $createPayload = [
             'user_id' => (int) $user['id'],
             'node_id' => $preflightNodeId,

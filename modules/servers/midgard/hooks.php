@@ -169,6 +169,27 @@ add_hook('EmailPreSend', 1, function (array $vars): array {
             return ['abortsend' => true];
         }
 
+        // Guard 3: Block any welcome/credentials template from re-firing if
+        // Midgard's PasswordMailer already successfully delivered credentials
+        // for this service. WHMCS may auto-fire the product's configured welcome
+        // email template (which may have a custom name, bypassing Guard 2) when
+        // the service reaches Active. We allow explicit admin re-sends by
+        // checking that the email being sent lacks Midgard credentials — if it
+        // already has our password merge fields, it's a legitimate re-send.
+        $store = new MetadataStore();
+        if ($store->hasPasswordEmailBeenSent($serviceId) && ! EmailTemplateGuard::hasMidgardPasswordInVars($vars)) {
+            logModuleCall('midgard', 'emailGuard.blockedDuplicateWelcome', [
+                'serviceid' => $serviceId,
+                'userid' => (int) ($vars['userid'] ?? 0),
+                'relid' => (int) ($vars['relid'] ?? 0),
+                'messagename' => $messageName,
+            ], [
+                'reason' => 'Blocked duplicate welcome email — Midgard credentials already dispatched for this service.',
+            ], null, []);
+
+            return ['abortsend' => true];
+        }
+
         return [];
     } catch (\Throwable $e) {
         logModuleCall('midgard', 'emailGuard.error', [
