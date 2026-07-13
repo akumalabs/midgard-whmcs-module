@@ -43,6 +43,12 @@ function midgard_MetaData(): array
 function midgard_ConfigOptions(): array
 {
     return [
+        'location_id' => [
+            'Type' => 'text',
+            'Size' => '8',
+            'Default' => '',
+            'Description' => 'Location ID on Panel',
+        ],
         'cpu' => [
             'Type' => 'text',
             'Size' => '8',
