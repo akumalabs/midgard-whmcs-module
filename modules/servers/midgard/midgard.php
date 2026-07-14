@@ -140,8 +140,26 @@ function midgard_CreateAccount(array $params)
     $locationId = 0;
     $osImageId = 0;
 
+    // Per-service provisioning lock: prevents two overlapping CreateAccount()
+    // invocations for the same WHMCS service (e.g. a cron retry firing while
+    // a prior slow/timed-out attempt is still completing in the background)
+    // from both slipping past the "existing server" check below and each
+    // creating their own server + sending their own (individually correct,
+    // but duplicate) credentials email. Released in the finally block below
+    // regardless of which return path fires.
+    $store = midgard_store();
+    $lockClaimed = $serviceId > 0 ? $store->claimProvisioning($serviceId) : true;
+    if (! $lockClaimed) {
+        midgard_logDiagnostic('createAccount.provisioningAlreadyInProgress', [
+            'serviceid' => $serviceId,
+        ], [
+            'message' => 'Another CreateAccount() invocation is already provisioning this service; skipping to avoid duplicate server/email.',
+        ]);
+
+        return 'Provisioning already in progress for this service — please wait for the current attempt to complete.';
+    }
+
     try {
-        $store = midgard_store();
         $client = midgard_client($params);
         $panelBaseUrl = Config::panelBaseUrl($params);
 
@@ -720,6 +738,10 @@ function midgard_CreateAccount(array $params)
         ]);
 
         return 'Provisioning failed: ' . $e->getMessage();
+    } finally {
+        if ($serviceId > 0) {
+            $store->releaseProvisioning($serviceId);
+        }
     }
 }
 
