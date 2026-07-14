@@ -325,6 +325,13 @@ final class ProvisioningNetworkService
      * API round-trips per provision and was the primary source of 504
      * gateway timeouts in the WHMCS cron path.
      *
+     * IMPORTANT: both IPv4 and IPv6 picking are now gated on their
+     * respective $requireIpv4/$requireIpv6 flags. Previously IPv6 (and
+     * IPv4) were picked opportunistically any time a matching address was
+     * available, regardless of what the caller actually requested — this
+     * caused servers to be provisioned with IPv6 even when the "Require
+     * IPv6" preflight box was unchecked.
+     *
      * Returns a list of address IDs to inject as address_ids[] on the
      * createServer payload. The panel's ServerProvisioningService then
      * performs atomic in-transaction binding via assignAddressesAtCreation().
@@ -367,7 +374,8 @@ final class ProvisioningNetworkService
                 $type = strtolower(trim((string) ($row['type'] ?? '')));
                 $address = trim((string) ($row['address'] ?? ''));
 
-                if ($type === 'ipv4' && $pickedIpv4 === 0) {
+                // Only attempt to pick IPv4 when the caller actually wants it.
+                if ($requireIpv4 && $type === 'ipv4' && $pickedIpv4 === 0) {
                     $flag = FILTER_FLAG_IPV4;
                     if (filter_var($address, FILTER_VALIDATE_IP, $flag) !== false) {
                         $addressIds[] = $id;
@@ -375,12 +383,14 @@ final class ProvisioningNetworkService
                     }
                     continue;
                 }
+
+                // Only attempt to pick IPv6 when the caller actually wants it.
                 // For IPv6 we prefer a /128 host row. The panel's
                 // getAvailable() may surface both /64 subnets and /128 hosts.
                 // Skip subnet rows — the email-rendering pipeline prefers
                 // individuals, and the panel will bootstrap a /128 from the
                 // subnet if no individual is selected.
-                if ($type === 'ipv6' && $pickedIpv6 === 0) {
+                if ($requireIpv6 && $type === 'ipv6' && $pickedIpv6 === 0) {
                     $cidr = (int) ($row['cidr'] ?? 0);
                     if ($cidr !== 128) {
                         continue;
@@ -401,9 +411,13 @@ final class ProvisioningNetworkService
                     'error' => 'No available IPv4 addresses on selected node.',
                 ];
             }
-            // IPv6 is best-effort: if a /128 host isn't surfaced by the panel
-            // yet (e.g., before bootstrap), fall through and let the panel's
-            // legacy assign-and-bootstrap path handle it.
+            if ($requireIpv6 && $pickedIpv6 === 0) {
+                return [
+                    'resolved' => false,
+                    'address_ids' => [],
+                    'error' => 'No available IPv6 addresses on selected node.',
+                ];
+            }
 
             return [
                 'resolved' => true,
@@ -418,4 +432,5 @@ final class ProvisioningNetworkService
                 'error_code' => 'api_error',
             ];
         }
-    }}
+    }
+}
