@@ -385,14 +385,13 @@ final class ProvisioningNetworkService
                 }
 
                 // Only attempt to pick IPv6 when the caller actually wants it.
-                // For IPv6 we prefer a /128 host row. The panel's
-                // getAvailable() may surface both /64 subnets and /128 hosts.
-                // Skip subnet rows — the email-rendering pipeline prefers
-                // individuals, and the panel will bootstrap a /128 from the
-                // subnet if no individual is selected.
+                // For IPv6 we accept both /64 subnets and /128 hosts. The panel's
+                // ConfigureVmJob auto-bootstraps a /128 individual from any
+                // /64 subnet assigned at creation time, so selecting a /64 is
+                // sufficient to guarantee IPv6 connectivity.
                 if ($requireIpv6 && $type === 'ipv6' && $pickedIpv6 === 0) {
                     $cidr = (int) ($row['cidr'] ?? 0);
-                    if ($cidr !== 128) {
+                    if ($cidr !== 64 && $cidr !== 128) {
                         continue;
                     }
                     $flag = FILTER_FLAG_IPV6;

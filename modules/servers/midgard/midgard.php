@@ -359,6 +359,8 @@ function midgard_CreateAccount(array $params)
             $user = $userData;
         }
 
+        $addressIds = [];
+
         $preflightPayload = [
             'location_id' => $locationId,
             'cpu' => $cpu,
@@ -412,7 +414,6 @@ function midgard_CreateAccount(array $params)
         // panel can bind them atomically inside store()'s transaction.
         // Eliminates the 5-7 sequential round-trips of the legacy
         // ensurePrimaryIpv4 → ensurePrimaryIpv6 → normalizePrimaryIp chain.
-        $addressIds = [];
         $addressResolution = ProvisioningNetworkService::resolveAddressIdsBeforeCreation(
             $client,
             $preflightNodeId,
@@ -622,28 +623,31 @@ function midgard_CreateAccount(array $params)
             }
 
             // Non-blocking IPv6 enforcement: attempt to ensure a primary IPv6 subnet
-            // (/64) is assigned. The panel auto-bootstraps a /128 individual from it.
-            // Failures are logged but do NOT block provisioning.
-            try {
-                $ipv6EnsureResult = ProvisioningNetworkService::ensurePrimaryIpv6($client, $midgardServerIdInt);
+            // (/64) is assigned, but only when the admin has explicitly toggled
+            // IPv6 in the provisioning preflight. The panel auto-bootstraps a
+            // /128 individual from it. Failures are logged but do NOT block provisioning.
+            if ($requireIpv6) {
+                try {
+                    $ipv6EnsureResult = ProvisioningNetworkService::ensurePrimaryIpv6($client, $midgardServerIdInt);
 
-                if (! $ipv6EnsureResult['ensured'] && ! empty($ipv6EnsureResult['error'])) {
-                    midgard_logDiagnostic('createAccount.ipv6Enforcement.skipped', [
+                    if (! $ipv6EnsureResult['ensured'] && ! empty($ipv6EnsureResult['error'])) {
+                        midgard_logDiagnostic('createAccount.ipv6Enforcement.skipped', [
+                            'serviceid' => $serviceId,
+                            'panel_base_url' => $panelBaseUrl,
+                            'server_id' => $midgardServerIdInt,
+                        ], [
+                            'ensure_result' => $ipv6EnsureResult,
+                        ]);
+                    }
+                } catch (\Throwable $e) {
+                    midgard_logDiagnostic('createAccount.ipv6Enforcement.exception', [
                         'serviceid' => $serviceId,
                         'panel_base_url' => $panelBaseUrl,
                         'server_id' => $midgardServerIdInt,
                     ], [
-                        'ensure_result' => $ipv6EnsureResult,
+                        'message' => $e->getMessage(),
                     ]);
                 }
-            } catch (\Throwable $e) {
-                midgard_logDiagnostic('createAccount.ipv6Enforcement.exception', [
-                    'serviceid' => $serviceId,
-                    'panel_base_url' => $panelBaseUrl,
-                    'server_id' => $midgardServerIdInt,
-                ], [
-                    'message' => $e->getMessage(),
-                ]);
             }
 
             // Canonical normalization: ensure the panel's primary IP follows the
@@ -693,6 +697,23 @@ function midgard_CreateAccount(array $params)
             PasswordMailer::sendOneTime($params, $store, $midgardServerUuid, $initialPassword);
         } catch (\Throwable $e) {
             logModuleCall('midgard', 'sendOneTimePasswordEmail', ['serviceid' => $serviceId], $e->getMessage(), null, []);
+
+            $message = 'Provisioning blocked: failed to deliver credentials email. ' . $e->getMessage();
+            $meta = $store->get($serviceId);
+            $meta['midgard_last_error'] = $message;
+            $store->upsert($serviceId, $meta);
+            midgard_setHostingStatus($serviceId, 'Pending');
+
+            midgard_logDiagnostic('createAccount.passwordEmailFailed', [
+                'serviceid' => $serviceId,
+                'panel_base_url' => $panelBaseUrl,
+                'server_id' => $midgardServerIdInt,
+                'server_uuid' => $midgardServerUuid,
+            ], [
+                'message' => $e->getMessage(),
+            ]);
+
+            return $message;
         }
 
         $meta = $store->get($serviceId);
