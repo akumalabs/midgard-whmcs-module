@@ -10,6 +10,7 @@ class MetadataStore implements PasswordDispatchStore
 {
     private const META_TABLE = 'mod_midgard_service_meta';
     private const EMAIL_TABLE = 'mod_midgard_email_dispatch';
+    private const PROVISION_LOCK_TABLE = 'mod_midgard_provision_lock';
 
     /**
      * @return array<string, mixed>
@@ -136,6 +137,62 @@ class MetadataStore implements PasswordDispatchStore
     }
 
     /**
+     * Atomically claim the right to provision (CreateAccount) for a given
+     * service. Backed by an INSERT against a primary-keyed table, so a
+     * concurrent second call (e.g. a WHMCS cron retry firing while a prior
+     * slow/timed-out attempt is still running in the background) fails the
+     * INSERT and returns false rather than proceeding to create a second,
+     * duplicate server (and duplicate credentials email).
+     *
+     * Stale locks (e.g. left behind by a PHP fatal error/OOM kill that
+     * skipped the finally block) expire after 10 minutes — comfortably
+     * longer than any real provisioning attempt should take — so a genuinely
+     * abandoned lock doesn't permanently block future retries.
+     *
+     * @return bool True if the lock was acquired, false if another attempt
+     *               already holds it (and hasn't expired).
+     */
+    public function claimProvisioning(int $serviceId): bool
+    {
+        $this->ensureSchema();
+
+        $now = time();
+        $staleBefore = date('Y-m-d H:i:s', $now - 600); // 10 minutes
+
+        // Clear out any stale lock left behind by an attempt that never
+        // reached its finally block (fatal error, OOM kill, server restart).
+        Capsule::table(self::PROVISION_LOCK_TABLE)
+            ->where('service_id', $serviceId)
+            ->where('claimed_at', '<', $staleBefore)
+            ->delete();
+
+        try {
+            Capsule::table(self::PROVISION_LOCK_TABLE)->insert([
+                'service_id' => $serviceId,
+                'claimed_at' => date('Y-m-d H:i:s', $now),
+            ]);
+
+            return true;
+        } catch (\Throwable $e) {
+            // Primary key collision — another attempt already holds the lock.
+            return false;
+        }
+    }
+
+    /**
+     * Release a previously-claimed provisioning lock. Safe to call even if
+     * no lock is currently held for this service.
+     */
+    public function releaseProvisioning(int $serviceId): void
+    {
+        $this->ensureSchema();
+
+        Capsule::table(self::PROVISION_LOCK_TABLE)
+            ->where('service_id', $serviceId)
+            ->delete();
+    }
+
+    /**
      * Check whether a Midgard credentials email was already successfully
      * dispatched for this service. Used by the EmailPreSend hook to block
      * duplicate welcome emails that WHMCS auto-fires when the service
@@ -195,6 +252,13 @@ class MetadataStore implements PasswordDispatchStore
                 $table->dateTime('sent_at')->nullable();
                 $table->dateTime('created_at');
                 $table->index(['service_id']);
+            });
+        }
+
+        if (! $schema->hasTable(self::PROVISION_LOCK_TABLE)) {
+            $schema->create(self::PROVISION_LOCK_TABLE, function ($table): void {
+                $table->integer('service_id')->primary();
+                $table->dateTime('claimed_at');
             });
         }
     }
