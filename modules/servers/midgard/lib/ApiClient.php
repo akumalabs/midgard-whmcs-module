@@ -175,7 +175,7 @@ final class ApiClient
      */
     public function availableNodeAddresses(int $nodeId): array
     {
-        return $this->get('/api/v1/admin/nodes/' . $nodeId . '/addresses/available');
+        return $this->get('/api/v1/admin/nodes/' . $nodeId . '/addresses/available?per_page=200');
     }
     public function assignIP(int $serverId, int $addressId): array
     {

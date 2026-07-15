@@ -176,8 +176,18 @@ add_hook('EmailPreSend', 1, function (array $vars): array {
         // the service reaches Active. We allow explicit admin re-sends by
         // checking that the email being sent lacks Midgard credentials — if it
         // already has our password merge fields, it's a legitimate re-send.
+        //
+        // Scoped ONLY to welcome/credentials templates. Invoices, payment
+        // confirmations, suspension notices, and renewal reminders pass through
+        // untouched — those must never be suppressed.
+        $isConfiguredWelcomeTemplate = $messageName !== '' && strcasecmp($messageName, $configuredTemplate) === 0;
+
         $store = new MetadataStore();
-        if ($store->hasPasswordEmailBeenSent($serviceId) && ! EmailTemplateGuard::hasMidgardPasswordInVars($vars)) {
+        if (
+            ($isConfiguredWelcomeTemplate || $isWhmcsDefaultWelcome)
+            && $store->hasPasswordEmailBeenSent($serviceId)
+            && ! EmailTemplateGuard::hasMidgardPasswordInVars($vars)
+        ) {
             logModuleCall('midgard', 'emailGuard.blockedDuplicateWelcome', [
                 'serviceid' => $serviceId,
                 'userid' => (int) ($vars['userid'] ?? 0),
