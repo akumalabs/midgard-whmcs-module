@@ -332,6 +332,19 @@ final class SyncService
             }
         }
 
+        // Final fallback: use the top-level primary_ipv6_individual field
+        // exposed by the panel (formatServer) when the /64 subnet is the
+        // assigned address but IPv4 holds is_primary priority.
+        if ($primaryIpv6 === '') {
+            $topLevelIndividual = $serverData['primary_ipv6_individual'] ?? null;
+            if (is_array($topLevelIndividual)) {
+                $individualAddress = trim((string) ($topLevelIndividual['address'] ?? ''));
+                if ($individualAddress !== '') {
+                    $primaryIpv6 = $individualAddress;
+                }
+            }
+        }
+
         return [
             'addresses' => $addresses,
             'primary_ipv4' => $primaryIpv4,
