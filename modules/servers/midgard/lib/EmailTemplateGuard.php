@@ -140,4 +140,45 @@ final class EmailTemplateGuard
     {
         return self::extractPassword($hookVars) !== '';
     }
+
+    /**
+     * Broader keyword-based detection for welcome/credentials/provisioning
+     * email templates. This catches custom-named templates (e.g. "VPS
+     * Welcome", "Dedicated Server Welcome Email", "Service Credentials")
+     * that bypass the exact-match isWhmcsDefaultWelcomeTemplate check.
+     *
+     * When a Midgard service has already received its credentials email,
+     * ANY subsequent email matching these keywords is suppressed to prevent
+     * duplicates — unless the email explicitly carries Midgard merge fields
+     * (admin-initiated re-send).
+     */
+    public static function isLikelyWelcomeOrCredentialsTemplate(string $messageName): bool
+    {
+        if (self::isWhmcsDefaultWelcomeTemplate($messageName)) {
+            return true;
+        }
+
+        $normalized = self::normalizeKey($messageName);
+        if ($normalized === '') {
+            return false;
+        }
+
+        $keywords = [
+            'welcome',
+            'credential',
+            'provision',
+            'accountcreated',
+            'accountcreatedemail',
+            'serverwelcome',
+            'vpswelcome',
+        ];
+
+        foreach ($keywords as $keyword) {
+            if (str_contains($normalized, $keyword)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }

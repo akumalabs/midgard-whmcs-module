@@ -181,10 +181,11 @@ add_hook('EmailPreSend', 1, function (array $vars): array {
         // confirmations, suspension notices, and renewal reminders pass through
         // untouched — those must never be suppressed.
         $isConfiguredWelcomeTemplate = $messageName !== '' && strcasecmp($messageName, $configuredTemplate) === 0;
+        $isLikelyWelcome = $messageName !== '' && EmailTemplateGuard::isLikelyWelcomeOrCredentialsTemplate($messageName);
 
         $store = new MetadataStore();
         if (
-            ($isConfiguredWelcomeTemplate || $isWhmcsDefaultWelcome)
+            ($isConfiguredWelcomeTemplate || $isWhmcsDefaultWelcome || $isLikelyWelcome)
             && $store->hasPasswordEmailBeenSent($serviceId)
             && ! EmailTemplateGuard::hasMidgardPasswordInVars($vars)
         ) {
