@@ -12,7 +12,7 @@ final class SyncService
      * @param array<string, mixed> $params
      * @return array<string, mixed>
      */
-    public static function syncFromPanel(array $params, MetadataStore $store): array
+    public static function syncFromPanel(array $params, MetadataStore $store, bool $includeProgress = true): array
     {
         $serviceId = (int) ($params['serviceid'] ?? 0);
         $meta = $store->get($serviceId);
@@ -25,10 +25,12 @@ final class SyncService
         $client = new ApiClient(Config::panelBaseUrl($params), Config::apiToken($params));
 
         $progressPayload = [];
-        try {
-            $progressPayload = $client->installProgress($serverId);
-        } catch (\Throwable $e) {
-            // Keep existing state when progress endpoint is temporarily unavailable.
+        if ($includeProgress) {
+            try {
+                $progressPayload = $client->installProgress($serverId);
+            } catch (\Throwable $e) {
+                // Keep existing state when progress endpoint is temporarily unavailable.
+            }
         }
 
         if ($progressPayload !== []) {

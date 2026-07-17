@@ -682,7 +682,7 @@ function midgard_CreateAccount(array $params)
         // before credential dispatch.  Eliminates redundant intermediate
         // syncs that added ~2-3 round-trips to the provisioning flow.
         try {
-            $meta = SyncService::syncFromPanel($params, $store);
+            $meta = SyncService::syncFromPanel($params, $store, false);
         } catch (\Throwable $e) {
             midgard_logDiagnostic('createAccount.syncBeforeEmail.exception', [
                 'serviceid' => $serviceId,
