@@ -47,13 +47,23 @@ function midgard_hookResolveMidgardServiceIdForEmail(array $vars): int
     return 0;
 }
 
-function midgard_hookResolveConfiguredTemplateForService(int $serviceId): string
+function midgard_hookResolveConfiguredTemplateForService(int $serviceId, MetadataStore $store): string
 {
     if ($serviceId <= 0) {
         return 'Midgard Provisioning Credentials';
     }
 
-    // WHMCS stores module config options positionally as
+    // Authoritative source: the template name that PasswordMailer persisted
+    // at send time (resolved via Config::option() with the friendly-key
+    // array). This is always correct because it was resolved at the exact
+    // moment the email was dispatched, not derived from a positional DB guess.
+    $authoritative = trim((string) ($store->get($serviceId)['midgard_welcome_template'] ?? ''));
+    if ($authoritative !== '') {
+        return $authoritative;
+    }
+
+    // Fallback (narrow pre-first-email window): derive from the product's
+    // configoptions. WHMCS stores module config options positionally as
     // tblproducts.configoption1..configoption24, in the order returned by
     // midgard_ConfigOptions(). Hardcoding the column index is fragile because
     // any reorder of midgard_ConfigOptions() silently shifts the mapping.
@@ -127,7 +137,8 @@ add_hook('EmailPreSend', 1, function (array $vars): array {
             return [];
         }
 
-        $configuredTemplate = midgard_hookResolveConfiguredTemplateForService($serviceId);
+        $store = new MetadataStore();
+        $configuredTemplate = midgard_hookResolveConfiguredTemplateForService($serviceId, $store);
 
         // Guard 1: Block our own configured template if it lacks a password.
         $decision = EmailTemplateGuard::evaluateCredentialsTemplateSend($vars, $configuredTemplate);
@@ -183,7 +194,6 @@ add_hook('EmailPreSend', 1, function (array $vars): array {
         $isConfiguredWelcomeTemplate = $messageName !== '' && strcasecmp($messageName, $configuredTemplate) === 0;
         $isLikelyWelcome = $messageName !== '' && EmailTemplateGuard::isLikelyWelcomeOrCredentialsTemplate($messageName);
 
-        $store = new MetadataStore();
         if (
             ($isConfiguredWelcomeTemplate || $isWhmcsDefaultWelcome || $isLikelyWelcome)
             && $store->hasPasswordEmailBeenSent($serviceId)

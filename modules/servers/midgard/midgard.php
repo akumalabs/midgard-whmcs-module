@@ -205,54 +205,15 @@ function midgard_CreateAccount(array $params)
             'default_ipv6' => $requireIpv6,
         ]);
 
-        $stage = 'location_check';
-        try {
-            $locationResponse = $client->getLocation($locationId);
-            $locationData = $locationResponse['data'] ?? null;
-            $resolvedLocationId = is_array($locationData)
-                ? (int) ($locationData['id'] ?? 0)
-                : 0;
-
-            if ($resolvedLocationId !== $locationId) {
-                midgard_logDiagnostic('createAccount.locationMismatch', [
-                    'serviceid' => $serviceId,
-                    'panel_base_url' => $panelBaseUrl,
-                    'location_id' => $locationId,
-                ], $locationResponse);
-
-                return "Provisioning blocked: location_id {$locationId} was not found on connected Midgard panel.";
-            }
-        } catch (MidgardApiException $e) {
-            $message = strtolower($e->getMessage());
-            if (
-                in_array($e->statusCode(), [404, 422], true)
-                || str_contains($message, 'location')
-            ) {
-                midgard_logDiagnostic('createAccount.locationLookupFailed', [
-                    'serviceid' => $serviceId,
-                    'panel_base_url' => $panelBaseUrl,
-                    'location_id' => $locationId,
-                    'status_code' => $e->statusCode(),
-                ], [
-                    'message' => $e->getMessage(),
-                    'payload' => $e->payload(),
-                ]);
-
-                return "Provisioning blocked: location_id {$locationId} was not found on connected Midgard panel.";
-            }
-
-            midgard_logDiagnostic('createAccount.locationLookupError', [
-                'serviceid' => $serviceId,
-                'panel_base_url' => $panelBaseUrl,
-                'location_id' => $locationId,
-                'status_code' => $e->statusCode(),
-            ], [
-                'message' => $e->getMessage(),
-                'payload' => $e->payload(),
-            ]);
-
-            return 'Provisioning blocked: unable to verify selected location_id against connected Midgard panel.';
-        }
+        // Note: no standalone location-existence check here. preflight()
+        // (below) already validates location_id via its own
+        // exists:locations,id rule and returns a clear 422 if it's invalid —
+        // a separate up-front getLocation() call was purely redundant with
+        // that, and cost a full extra round trip on every single
+        // CreateAccount() invocation. The compensating error handler in the
+        // MidgardApiException catch block below recognizes preflight 422s
+        // that mention "location" and surfaces the same user-facing message
+        // the old standalone check used to produce.
 
         $meta = $store->get($serviceId);
         $existingServerId = (int) ($meta['midgard_server_id'] ?? 0);
@@ -397,17 +358,11 @@ function midgard_CreateAccount(array $params)
             return $message;
         }
 
-        $randomNameResponse = $client->randomName();
-        $nameData = $randomNameResponse['data'] ?? [];
-        if (! is_array($nameData)) {
-            return 'Midgard random-name response was invalid.';
-        }
-
-        $serverName = trim((string) ($nameData['name'] ?? ''));
-        $hostname = trim((string) ($nameData['hostname'] ?? ''));
-        if ($serverName === '' || $hostname === '') {
-            return 'Midgard random-name response missing name/hostname.';
-        }
+        // Generate server name/hostname locally instead of calling the panel's
+        // /random-name endpoint. Eliminates one full API round-trip while
+        // producing the same adjective-noun format the panel uses internally.
+        $serverName = midgard_generateServerName();
+        $hostname = midgard_generateHostname($serverName);
 
         $initialPassword = midgard_generatePassword();
         // Phase 3.2: Pre-select address IDs BEFORE server creation so the
@@ -682,7 +637,7 @@ function midgard_CreateAccount(array $params)
         // before credential dispatch.  Eliminates redundant intermediate
         // syncs that added ~2-3 round-trips to the provisioning flow.
         try {
-            $meta = SyncService::syncFromPanel($params, $store, false);
+            $meta = SyncService::syncFromPanel($params, $store, includeProgress: false);
         } catch (\Throwable $e) {
             midgard_logDiagnostic('createAccount.syncBeforeEmail.exception', [
                 'serviceid' => $serviceId,
@@ -738,6 +693,25 @@ function midgard_CreateAccount(array $params)
 
         if (($payload['error_code'] ?? '') === 'preflight_failed') {
             $message = midgard_preflightFailureMessage($payload);
+            $meta = midgard_store()->get($serviceId);
+            $meta['midgard_last_error'] = $message;
+            midgard_store()->upsert($serviceId, $meta);
+            midgard_setHostingStatus($serviceId, 'Pending');
+
+            return $message;
+        }
+
+        // preflight()'s own exists:locations,id validation failing (invalid
+        // location_id) surfaces as a plain Laravel validation 422 — no
+        // error_code, just a message mentioning "location". Recognize it here
+        // so removing the old standalone getLocation() pre-check doesn't lose
+        // this specific, actionable message.
+        if (
+            $e->statusCode() === 422
+            && $stage === 'preflight'
+            && str_contains(strtolower($e->getMessage()), 'location')
+        ) {
+            $message = "Provisioning blocked: location_id {$locationId} was not found on connected Midgard panel.";
             $meta = midgard_store()->get($serviceId);
             $meta['midgard_last_error'] = $message;
             midgard_store()->upsert($serviceId, $meta);
@@ -1205,6 +1179,68 @@ function midgard_store(): MetadataStore
 function midgard_generatePassword(int $length = 16): string
 {
     return PasswordGenerator::generate();
+}
+
+/**
+ * Generate a random server name in the same adjective-noun format
+ * the panel's RandomServerNameService produces (e.g. "Silver Horizon").
+ *
+ * This avoids a dedicated /random-name API round-trip on every
+ * CreateAccount invocation.  The word pools are kept in sync with
+ * the panel's app/Services/Servers/RandomServerNameService.php.
+ */
+function midgard_generateServerName(): string
+{
+    $adjectives = [
+        'agile', 'amber', 'ancient', 'apex', 'arctic', 'astral', 'atomic', 'autumn',
+        'azure', 'bold', 'brisk', 'bronze', 'calm', 'celestial', 'chroma', 'cinder',
+        'clear', 'clever', 'cloudy', 'cobalt', 'coral', 'cosmic', 'crimson', 'crisp',
+        'crystal', 'cyber', 'daring', 'deep', 'delta', 'divine', 'drift', 'dynamic',
+        'eager', 'echo', 'electric', 'ember', 'emerald', 'epic', 'fierce', 'fluent',
+        'foggy', 'frosty', 'fused', 'galactic', 'gentle', 'glacial', 'golden', 'grand',
+        'graphite', 'happy', 'harbor', 'harmonic', 'hazy', 'heroic', 'hollow', 'hyper',
+        'icy', 'indigo', 'iron', 'ivory', 'jade', 'jet', 'jolly', 'keen',
+        'kindred', 'lively', 'lucky', 'lunar', 'magnetic', 'majestic', 'marine', 'mellow',
+        'midnight', 'mighty', 'misty', 'modern', 'moonlit', 'nebula', 'neon', 'nimble',
+        'noble', 'nova', 'obsidian', 'omega', 'opal', 'orbit', 'pacific', 'pearl',
+        'phoenix', 'pioneer', 'plasma', 'polar', 'primal', 'prime', 'proud', 'quantum',
+        'quick', 'radiant', 'rapid', 'raven', 'regal', 'rising', 'royal', 'sacred',
+        'sapphire', 'scarlet', 'shadow', 'silent', 'silver', 'skyline', 'solar', 'sonic',
+        'spark', 'spirit', 'stellar', 'stormy', 'sunny', 'swift', 'tactical', 'tidal',
+        'titanic', 'tranquil', 'turbo', 'ultra', 'vapor', 'velvet', 'vibrant', 'vivid',
+        'wild', 'windy', 'wisdom', 'zenith', 'zesty',
+    ];
+
+    $nouns = [
+        'anchor', 'arc', 'array', 'atlas', 'beacon', 'blade', 'bloom', 'bolt',
+        'bridge', 'burst', 'byte', 'canvas', 'canyon', 'castle', 'center', 'charge',
+        'cipher', 'circuit', 'cloud', 'cluster', 'comet', 'core', 'crest', 'crown',
+        'dawn', 'delta', 'domain', 'drift', 'eagle', 'echo', 'edge', 'engine',
+        'falcon', 'field', 'flare', 'fleet', 'flow', 'forge', 'frontier', 'galaxy',
+        'gate', 'glider', 'grid', 'grove', 'guardian', 'harbor', 'haven', 'helix',
+        'horizon', 'hub', 'hunter', 'ion', 'jet', 'journey', 'keeper', 'kernel',
+        'knight', 'lab', 'lancer', 'layer', 'legend', 'light', 'line', 'link',
+        'loop', 'machine', 'matrix', 'mesa', 'mission', 'module', 'monitor', 'mountain',
+        'nebula', 'network', 'nexus', 'node', 'nova', 'observer', 'orbit', 'origin',
+        'outpost', 'path', 'peak', 'phoenix', 'pilot', 'pioneer', 'plane', 'point',
+        'portal', 'pulse', 'quantum', 'quest', 'ranger', 'reactor', 'relay', 'ridge',
+        'river', 'rocket', 'runner', 'sail', 'scope', 'sector', 'sentinel', 'server',
+        'shadow', 'shield', 'signal', 'sky', 'spark', 'sphere', 'spire', 'sprint',
+        'stack', 'star', 'station', 'stream', 'summit', 'surge', 'switch', 'system',
+        'thunder', 'titan', 'tower', 'trail', 'transit', 'unit', 'vector', 'voyager',
+        'walker', 'wave', 'wing', 'world',
+    ];
+
+    return ucfirst($adjectives[array_rand($adjectives)]) . ' ' . ucfirst($nouns[array_rand($nouns)]);
+}
+
+/**
+ * Convert a server name to a slug-style hostname.
+ * e.g. "Silver Horizon" → "silver-horizon"
+ */
+function midgard_generateHostname(string $serverName): string
+{
+    return strtolower(trim((string) preg_replace('/[^a-zA-Z0-9]+/', '-', $serverName), '-'));
 }
 
 function midgard_clientName(array $params): string

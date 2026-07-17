@@ -37,6 +37,16 @@ final class PasswordMailer
                 throw new \RuntimeException('Unable to send credentials email: missing service/client ID.');
             }
 
+            // Persist the resolved template name so the EmailPreSend hook can
+            // compare against this authoritative value (resolved via Config::option()
+            // which reads WHMCS's own $params['configoptions'] friendly-key array)
+            // instead of re-deriving it from a guessed configoptionN column index.
+            if (trim((string) ($store->get($serviceId)['midgard_welcome_template'] ?? '')) !== $templateName) {
+                $store->upsert($serviceId, array_merge($store->get($serviceId), [
+                    'midgard_welcome_template' => $templateName,
+                ]));
+            }
+
             // Pull the latest synced metadata for canonical primary IPs.
             $meta = $store->get($serviceId);
             $primaryIpv4 = trim((string) ($meta['midgard_primary_ipv4'] ?? ''));

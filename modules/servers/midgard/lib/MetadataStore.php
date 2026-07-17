@@ -33,6 +33,7 @@ class MetadataStore implements PasswordDispatchStore
             'midgard_server_uuid' => (string) ($row->midgard_server_uuid ?? ''),
             'midgard_provision_state' => (string) ($row->midgard_provision_state ?? 'installing'),
             'midgard_last_error' => (string) ($row->midgard_last_error ?? ''),
+            'midgard_welcome_template' => (string) ($row->midgard_welcome_template ?? ''),
             'midgard_password_email_sent_at' => (string) ($row->midgard_password_email_sent_at ?? ''),
             'midgard_addresses' => $this->decodeAddresses((string) ($row->midgard_addresses ?? '')),
             'midgard_primary_ipv4' => (string) ($row->midgard_primary_ipv4 ?? ''),
@@ -60,6 +61,7 @@ class MetadataStore implements PasswordDispatchStore
             'midgard_server_uuid' => (string) ($data['midgard_server_uuid'] ?? ''),
             'midgard_provision_state' => (string) ($data['midgard_provision_state'] ?? 'installing'),
             'midgard_last_error' => (string) ($data['midgard_last_error'] ?? ''),
+            'midgard_welcome_template' => (string) ($data['midgard_welcome_template'] ?? ''),
             'midgard_password_email_sent_at' => (string) ($data['midgard_password_email_sent_at'] ?? ''),
             'midgard_addresses' => $this->encodeAddresses($data['midgard_addresses'] ?? []),
             'midgard_primary_ipv4' => (string) ($data['midgard_primary_ipv4'] ?? ''),
@@ -227,6 +229,7 @@ class MetadataStore implements PasswordDispatchStore
                 $table->string('midgard_server_uuid', 128)->nullable();
                 $table->string('midgard_provision_state', 32)->default('installing');
                 $table->text('midgard_last_error')->nullable();
+                $table->string('midgard_welcome_template', 191)->nullable();
                 $table->string('midgard_password_email_sent_at', 32)->nullable();
                 $table->text('midgard_addresses')->nullable();
                 $table->string('midgard_primary_ipv4', 64)->nullable();
@@ -274,6 +277,7 @@ class MetadataStore implements PasswordDispatchStore
             'midgard_server_uuid' => '',
             'midgard_provision_state' => 'installing',
             'midgard_last_error' => '',
+            'midgard_welcome_template' => '',
             'midgard_password_email_sent_at' => '',
             'midgard_addresses' => [],
             'midgard_primary_ipv4' => '',
@@ -316,6 +320,9 @@ class MetadataStore implements PasswordDispatchStore
             },
             'midgard_live_snapshot_limit' => static function ($table): void {
                 $table->bigInteger('midgard_live_snapshot_limit')->nullable();
+            },
+            'midgard_welcome_template' => static function ($table): void {
+                $table->string('midgard_welcome_template', 191)->nullable();
             },
         ];
 

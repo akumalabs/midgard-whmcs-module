@@ -40,10 +40,21 @@ final class ApiClient
     private string $baseUrl;
     private string $token;
 
+    /** @var \CurlHandle|resource|null */
+    private $curlHandle = null;
+
     public function __construct(string $baseUrl, string $token)
     {
         $this->baseUrl = rtrim($baseUrl, '/');
         $this->token = $token;
+    }
+
+    public function __destruct()
+    {
+        if ($this->curlHandle !== null) {
+            curl_close($this->curlHandle);
+            $this->curlHandle = null;
+        }
     }
 
     /**
@@ -162,9 +173,6 @@ final class ApiClient
     }
 
     /**
-     * @return array<string, mixed>
-     */
-    /**
      * Fetch available addresses for a node (pre-creation resolver).
      *
      * Used by ProvisioningNetworkService::resolveAddressIdsBeforeCreation()
@@ -177,6 +185,10 @@ final class ApiClient
     {
         return $this->get('/api/v1/admin/nodes/' . $nodeId . '/addresses/available?per_page=200');
     }
+
+    /**
+     * @return array<string, mixed>
+     */
     public function assignIP(int $serverId, int $addressId): array
     {
         return $this->post('/api/v1/admin/servers/' . $serverId . '/network/assign-ip', [
@@ -297,10 +309,21 @@ final class ApiClient
     {
         $url = $this->baseUrl . '/' . ltrim($path, '/');
 
-        $ch = curl_init($url);
-        if ($ch === false) {
-            throw new MidgardApiException('Unable to initialize HTTP client.');
+        // Reuse a single cURL handle across all sequential requests within
+        // one ApiClient instance. curl_reset() clears per-call options
+        // (POSTFIELDS, CUSTOMREQUEST) while preserving the underlying TCP/TLS
+        // connection — this avoids paying a full TLS handshake (~30-80ms) on
+        // every call during CreateAccount's 5-6 sequential round-trips.
+        if ($this->curlHandle === null) {
+            $this->curlHandle = curl_init();
+            if ($this->curlHandle === false) {
+                throw new MidgardApiException('Unable to initialize HTTP client.');
+            }
+        } else {
+            curl_reset($this->curlHandle);
         }
+
+        curl_setopt($this->curlHandle, CURLOPT_URL, $url);
 
         $headers = [
             'Accept: application/json',
@@ -313,18 +336,18 @@ final class ApiClient
                 throw new MidgardApiException('Failed to encode request payload.');
             }
             $headers[] = 'Content-Type: application/json';
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $json);
+            curl_setopt($this->curlHandle, CURLOPT_POSTFIELDS, $json);
         }
 
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        curl_setopt($this->curlHandle, CURLOPT_CUSTOMREQUEST, $method);
+        curl_setopt($this->curlHandle, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($this->curlHandle, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($this->curlHandle, CURLOPT_TIMEOUT, 30);
+        curl_setopt($this->curlHandle, CURLOPT_TCP_KEEPALIVE, 1);
 
-        $rawBody = curl_exec($ch);
-        $statusCode = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-        $curlError = curl_error($ch);
-        curl_close($ch);
+        $rawBody = curl_exec($this->curlHandle);
+        $statusCode = (int) curl_getinfo($this->curlHandle, CURLINFO_RESPONSE_CODE);
+        $curlError = curl_error($this->curlHandle);
 
         if ($rawBody === false) {
             throw new MidgardApiException('HTTP request failed: ' . $curlError, 0);
