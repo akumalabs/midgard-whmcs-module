@@ -127,6 +127,7 @@ final class EmailTemplateGuard
             'hostingaccountwelcomeemail',
             'hostingaccountwelcome',
             'welcomeemail',
+            'dedicatedvpsserverwelcomeemail',
         ], true);
     }
 
