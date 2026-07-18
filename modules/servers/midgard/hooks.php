@@ -131,14 +131,36 @@ add_hook('AfterCronJob', 1, function (): void {
 });
 
 add_hook('EmailPreSend', 1, function (array $vars): array {
+    $debugFile = '/tmp/midgard_email_debug.log';
+    $messageName = trim((string) ($vars['messagename'] ?? $vars['messageName'] ?? ''));
+    
+    $debugMsg = "[" . date('Y-m-d H:i:s') . "] EmailPreSend triggered for: '" . $messageName . "'\n";
+    $debugMsg .= "Vars: " . json_encode([
+        'relid' => $vars['relid'] ?? null,
+        'id' => $vars['id'] ?? null,
+        'serviceid' => $vars['serviceid'] ?? null,
+        'userid' => $vars['userid'] ?? null,
+    ]) . "\n";
+    @file_put_contents($debugFile, $debugMsg, FILE_APPEND);
+
     try {
+        logModuleCall('midgard', 'emailPreSend.trigger', $vars, [], null, []);
         $serviceId = midgard_hookResolveMidgardServiceIdForEmail($vars);
+        
+        $debugMsg2 = "Resolved ServiceID: " . $serviceId . "\n";
+        @file_put_contents($debugFile, $debugMsg2, FILE_APPEND);
+
         if ($serviceId <= 0) {
             return [];
         }
 
         $store = new MetadataStore();
         $configuredTemplate = midgard_hookResolveConfiguredTemplateForService($serviceId, $store);
+        
+        $debugMsg3 = "Configured Template: '" . $configuredTemplate . "'\n";
+        $debugMsg3 .= "Password email already sent? " . ($store->hasPasswordEmailBeenSent($serviceId) ? 'YES' : 'NO') . "\n";
+        $debugMsg3 .= "Has password in vars? " . (EmailTemplateGuard::hasMidgardPasswordInVars($vars) ? 'YES' : 'NO') . "\n";
+        @file_put_contents($debugFile, $debugMsg3, FILE_APPEND);
 
         // Guard 1: Block our own configured template if it lacks a password.
         $decision = EmailTemplateGuard::evaluateCredentialsTemplateSend($vars, $configuredTemplate);
