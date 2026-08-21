@@ -20,6 +20,7 @@ if (! defined('WHMCS')) {
 require_once __DIR__ . '/lib/ApiClient.php';
 require_once __DIR__ . '/lib/CatalogCache.php';
 require_once __DIR__ . '/lib/Config.php';
+require_once __DIR__ . '/lib/DiagnosticSanitizer.php';
 require_once __DIR__ . '/lib/IdempotencyGuard.php';
 require_once __DIR__ . '/lib/EmailTemplateGuard.php';
 require_once __DIR__ . '/lib/PasswordDispatchStore.php';
@@ -148,8 +149,8 @@ function midgard_CreateAccount(array $params)
     // but duplicate) credentials email. Released in the finally block below
     // regardless of which return path fires.
     $store = midgard_store();
-    $lockClaimed = $serviceId > 0 ? $store->claimProvisioning($serviceId) : true;
-    if (! $lockClaimed) {
+    $lockToken = $serviceId > 0 ? $store->claimProvisioning($serviceId) : 'no-service-lock';
+    if ($lockToken === null) {
         midgard_logDiagnostic('createAccount.provisioningAlreadyInProgress', [
             'serviceid' => $serviceId,
         ], [
@@ -162,6 +163,11 @@ function midgard_CreateAccount(array $params)
     try {
         $client = midgard_client($params);
         $panelBaseUrl = Config::panelBaseUrl($params);
+        $heartbeat = static function () use ($store, $serviceId, $lockToken): void {
+        if ($serviceId > 0 && $lockToken !== 'no-service-lock') {
+            $store->heartbeatProvisioning($serviceId, $lockToken);
+        }
+        };
 
         $criticalIds = Config::validateCriticalProvisioningIds($params);
         $locationId = (int) $criticalIds['location_id'];
@@ -339,6 +345,7 @@ function midgard_CreateAccount(array $params)
             'payload' => $preflightPayload,
         ]);
 
+        $heartbeat();
         $preflightResponse = $client->preflight($preflightPayload);
         midgard_logDiagnostic('createAccount.preflightResponse', [
             'serviceid' => $serviceId,
@@ -443,6 +450,7 @@ function midgard_CreateAccount(array $params)
         }
         $createPayload = [
             'user_id' => (int) $user['id'],
+            'external_provisioning_reference' => 'whmcs:' . $serviceId,
             'node_id' => $preflightNodeId,
             'name' => $serverName,
             'hostname' => $hostname,
@@ -476,6 +484,7 @@ function midgard_CreateAccount(array $params)
             'default_ipv6' => $requireIpv6,
         ]);
 
+        $heartbeat();
         $createResponse = $client->createServer($createPayload);
         midgard_logDiagnostic('createAccount.createServerResponse', [
             'serviceid' => $serviceId,
@@ -651,7 +660,7 @@ function midgard_CreateAccount(array $params)
         try {
             PasswordMailer::sendOneTime($params, $store, $midgardServerUuid, $initialPassword);
         } catch (\Throwable $e) {
-            logModuleCall('midgard', 'sendOneTimePasswordEmail', ['serviceid' => $serviceId], $e->getMessage(), null, []);
+            \MidgardWhmcs\DiagnosticLogger::log('sendOneTimePasswordEmail', ['serviceid' => $serviceId], ['message' => $e->getMessage()]);
 
             $message = 'Provisioning blocked: failed to deliver credentials email. ' . $e->getMessage();
             $meta = $store->get($serviceId);
@@ -735,7 +744,7 @@ function midgard_CreateAccount(array $params)
         return 'Provisioning failed: ' . $e->getMessage();
     } finally {
         if ($serviceId > 0) {
-            $store->releaseProvisioning($serviceId);
+            $store->releaseProvisioning($serviceId, $lockToken);
         }
     }
 }
@@ -1067,7 +1076,19 @@ function midgard_AdminServicesTabFieldsSave(array $params): void
 
         $expectedUserId = (int) ($meta['midgard_user_id'] ?? 0);
         $actualUserId = midgard_extractServerOwnerId($serverData);
-        if ($expectedUserId > 0 && $actualUserId > 0 && $expectedUserId !== $actualUserId) {
+        if ($actualUserId <= 0) {
+            $message = 'Manual bind failed: selected server has no verifiable owner.';
+            $meta['midgard_last_error'] = $message;
+            $store->upsert($serviceId, $meta);
+            midgard_logDiagnostic('admin.serverBindingRejected.ownerUnavailable', [
+                'serviceid' => $serviceId,
+                'requested_server_id' => $targetServerId,
+                'expected_user_id' => $expectedUserId,
+            ]);
+            return;
+        }
+
+        if ($expectedUserId > 0 && $expectedUserId !== $actualUserId) {
             $message = "Manual bind failed: server owner mismatch (expected {$expectedUserId}, got {$actualUserId}).";
             $meta['midgard_last_error'] = $message;
             $store->upsert($serviceId, $meta);
@@ -1379,11 +1400,7 @@ function midgard_extractNetworkSummary(array $serverData): array
  */
 function midgard_logDiagnostic(string $action, array $requestData, $responseData = null): void
 {
-    if (! function_exists('logModuleCall')) {
-        return;
-    }
-
-    logModuleCall('midgard', $action, $requestData, $responseData, null, []);
+    \MidgardWhmcs\DiagnosticLogger::log($action, $requestData, $responseData);
 }
 
 /**

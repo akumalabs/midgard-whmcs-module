@@ -13,8 +13,21 @@ final class Config
             throw new \RuntimeException('Midgard panel hostname is not configured.');
         }
 
-        if (! str_starts_with($raw, 'http://') && ! str_starts_with($raw, 'https://')) {
+        if (! str_contains($raw, '://')) {
             $raw = 'https://' . $raw;
+        }
+
+        $parts = parse_url($raw);
+        if (! is_array($parts) || strtolower((string) ($parts['scheme'] ?? '')) !== 'https') {
+            throw new \RuntimeException('Midgard panel URL must use HTTPS.');
+        }
+        if (empty($parts['host']) || isset($parts['user'], $parts['pass'], $parts['query'], $parts['fragment'])) {
+            throw new \RuntimeException('Midgard panel URL is invalid.');
+        }
+
+        $port = isset($parts['port']) ? (int) $parts['port'] : 443;
+        if ($port < 1 || $port > 65535) {
+            throw new \RuntimeException('Midgard panel URL port is invalid.');
         }
 
         return rtrim($raw, '/');
@@ -51,7 +64,22 @@ final class Config
             return $default;
         }
 
-        return (int) $raw;
+        if (! preg_match('/^-?\d+$/', $raw)) {
+            return $default;
+        }
+
+        $value = filter_var($raw, FILTER_VALIDATE_INT);
+        return $value === false ? $default : (int) $value;
+    }
+
+    public static function boundedIntOption(array $params, string $key, int $default, int $min, int $max): int
+    {
+        $value = self::intOption($params, $key, $default);
+        if ($value < $min || $value > $max) {
+            return $default;
+        }
+
+        return $value;
     }
 
     public static function boolOption(array $params, string $key, bool $default = false): bool

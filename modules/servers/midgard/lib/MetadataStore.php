@@ -8,6 +8,8 @@ use Illuminate\Database\Capsule\Manager as Capsule;
 
 class MetadataStore implements PasswordDispatchStore
 {
+    private static bool $schemaReady = false;
+
     private const META_TABLE = 'mod_midgard_service_meta';
     private const EMAIL_TABLE = 'mod_midgard_email_dispatch';
     private const PROVISION_LOCK_TABLE = 'mod_midgard_provision_lock';
@@ -154,44 +156,35 @@ class MetadataStore implements PasswordDispatchStore
      * @return bool True if the lock was acquired, false if another attempt
      *               already holds it (and hasn't expired).
      */
-    public function claimProvisioning(int $serviceId): bool
+    public function claimProvisioning(int $serviceId): ?string
     {
         $this->ensureSchema();
-
         $now = time();
-        $staleBefore = date('Y-m-d H:i:s', $now - 600); // 10 minutes
-
-        // Clear out any stale lock left behind by an attempt that never
-        // reached its finally block (fatal error, OOM kill, server restart).
-        Capsule::table(self::PROVISION_LOCK_TABLE)
-            ->where('service_id', $serviceId)
-            ->where('claimed_at', '<', $staleBefore)
-            ->delete();
-
+        $staleBefore = date('Y-m-d H:i:s', $now - 1800);
+        Capsule::table(self::PROVISION_LOCK_TABLE)->where('service_id', $serviceId)->where('claimed_at', '<', $staleBefore)->delete();
+        $lockToken = bin2hex(random_bytes(16));
         try {
             Capsule::table(self::PROVISION_LOCK_TABLE)->insert([
                 'service_id' => $serviceId,
+                'lock_token' => $lockToken,
                 'claimed_at' => date('Y-m-d H:i:s', $now),
             ]);
-
-            return true;
+            return $lockToken;
         } catch (\Throwable $e) {
-            // Primary key collision — another attempt already holds the lock.
-            return false;
+            return null;
         }
     }
 
-    /**
-     * Release a previously-claimed provisioning lock. Safe to call even if
-     * no lock is currently held for this service.
-     */
-    public function releaseProvisioning(int $serviceId): void
+    public function heartbeatProvisioning(int $serviceId, string $lockToken): void
     {
         $this->ensureSchema();
+        Capsule::table(self::PROVISION_LOCK_TABLE)->where('service_id', $serviceId)->where('lock_token', $lockToken)->update(['claimed_at' => date('Y-m-d H:i:s')]);
+    }
 
-        Capsule::table(self::PROVISION_LOCK_TABLE)
-            ->where('service_id', $serviceId)
-            ->delete();
+    public function releaseProvisioning(int $serviceId, string $lockToken): void
+    {
+        $this->ensureSchema();
+        Capsule::table(self::PROVISION_LOCK_TABLE)->where('service_id', $serviceId)->where('lock_token', $lockToken)->delete();
     }
 
     /**
@@ -219,6 +212,10 @@ class MetadataStore implements PasswordDispatchStore
 
     private function ensureSchema(): void
     {
+        if (self::$schemaReady) {
+            return;
+        }
+
         $schema = Capsule::schema();
 
         if (! $schema->hasTable(self::META_TABLE)) {
@@ -261,9 +258,16 @@ class MetadataStore implements PasswordDispatchStore
         if (! $schema->hasTable(self::PROVISION_LOCK_TABLE)) {
             $schema->create(self::PROVISION_LOCK_TABLE, function ($table): void {
                 $table->integer('service_id')->primary();
+                $table->string('lock_token', 64)->nullable();
                 $table->dateTime('claimed_at');
             });
+        } elseif (! $schema->hasColumn(self::PROVISION_LOCK_TABLE, 'lock_token')) {
+            $schema->table(self::PROVISION_LOCK_TABLE, static function ($table): void {
+                $table->string('lock_token', 64)->nullable();
+            });
         }
+
+        self::$schemaReady = true;
     }
 
     /**

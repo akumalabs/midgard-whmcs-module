@@ -101,8 +101,7 @@ final class PasswordMailer
                 ];
 
                 if (function_exists('logModuleCall')) {
-                    logModuleCall(
-                        'midgard',
+                    DiagnosticLogger::log(
                         'sendOneTimePasswordEmail.attemptFailed',
                         [
                             'serviceid' => $serviceId,
@@ -110,9 +109,10 @@ final class PasswordMailer
                             'attempt_type' => $attempt['type'],
                             'attempt_id' => (int) $attempt['id'],
                         ],
-                        $result,
-                        null,
-                        []
+                        [
+                            'result' => (string) ($result['result'] ?? 'error'),
+                            'message' => (string) ($result['message'] ?? 'Email dispatch failed.'),
+                        ]
                     );
                 }
             }

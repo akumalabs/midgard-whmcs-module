@@ -96,7 +96,7 @@ final class EmailTemplateGuard
             return '';
         }
 
-        $targets = array_map('self::normalizeKey', $keys);
+        $targets = array_map([self::class, 'normalizeKey'], $keys);
         foreach ($source as $rowKey => $rowValue) {
             $normalizedKey = self::normalizeKey((string) $rowKey);
             if (! in_array($normalizedKey, $targets, true)) {

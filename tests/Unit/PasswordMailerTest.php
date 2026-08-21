@@ -88,6 +88,11 @@ namespace MidgardWhmcs\Tests\Unit {
             return $this->meta;
         }
 
+        public function upsert(int $serviceId, array $data): void
+        {
+            $this->meta = array_merge($this->meta, $data);
+        }
+
         public function claimPasswordDispatch(int $serviceId, string $serverUuid): ?string
         {
             $this->claims[] = [

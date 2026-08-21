@@ -43,8 +43,16 @@ final class SsoHelper
                     $ticket = $candidate;
                     break;
                 }
+            } catch (MidgardApiException $e) {
+                // Only try a compatibility payload for validation errors. Never
+                // retry authentication/authorization or server failures.
+                if ($e->statusCode() !== 422) {
+                    break;
+                }
             } catch (\Throwable $e) {
-                // Try next fallback payload when available.
+                // Compatibility/test doubles may throw a generic exception;
+                // retain fallback behavior for non-API failures.
+                continue;
             }
         }
 

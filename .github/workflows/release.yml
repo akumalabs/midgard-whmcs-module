@@ -16,6 +16,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: curl, mbstring, pdo_sqlite
+          tools: composer:v2
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Validate and test
+        run: |
+          composer validate --strict
+          composer audit --no-interaction
+          find modules/servers/midgard -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+          vendor/bin/phpunit --no-coverage
+
       - name: Build installable ZIP
         run: |
           mkdir -p dist

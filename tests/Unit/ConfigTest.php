@@ -60,6 +60,23 @@ namespace MidgardWhmcs\Tests\Unit {
             $this->assertSame(12, Config::intOption($params, 'location_id', 12));
         }
 
+        public function test_panel_url_requires_https(): void
+        {
+            $this->expectException(\RuntimeException::class);
+            Config::panelBaseUrl(['serverhostname' => 'http://panel.example.test']);
+        }
+
+        public function test_panel_url_defaults_to_https(): void
+        {
+            $this->assertSame('https://panel.example.test', Config::panelBaseUrl(['serverhostname' => 'panel.example.test/']));
+        }
+
+        public function test_invalid_numeric_option_uses_default(): void
+        {
+            $this->assertSame(4, Config::intOption(['cpu' => '2cpu'], 'cpu', 4));
+            $this->assertSame(4, Config::boundedIntOption(['cpu' => '999'], 'cpu', 4, 1, 128));
+        }
+
         public function test_validate_critical_provisioning_ids_fails_for_unresolved_location(): void
         {
             $params = [

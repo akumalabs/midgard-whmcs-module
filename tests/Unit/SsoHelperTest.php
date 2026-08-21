@@ -17,7 +17,7 @@ final class SsoHelperTest extends TestCase
             static function (array $payload) use (&$attempts): array {
                 $attempts[] = $payload;
                 if (isset($payload['user_id'])) {
-                    throw new \RuntimeException('user-id lookup failed');
+                    throw new \MidgardWhmcs\MidgardApiException('validation failed', 422);
                 }
 
                 return ['data' => ['ticket' => 'fallback-ticket']];
