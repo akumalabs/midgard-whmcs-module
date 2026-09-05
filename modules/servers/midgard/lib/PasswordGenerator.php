@@ -18,12 +18,30 @@ final class PasswordGenerator
             $password .= self::ALPHABET[random_int(0, $max)];
         }
 
-        // Guarantee at least one digit — the panel's password validation
-        // requires it, and a purely random draw misses digits ~15% of the time
-        // with a 16-char alphabet that is only ~11% digits.
-        if (! preg_match('/\d/', $password)) {
-            $pos = random_int(0, self::LENGTH - 1);
-            $password[$pos] = (string) random_int(0, 9);
+        // The panel validates passwords with Password::min(8)->letters()
+        // ->mixedCase()->numbers()->symbols(). A purely random draw from the
+        // alphabet can miss a required class, so guarantee all four —
+        // otherwise server creation fails with a 422 the operator never sees.
+        // Re-check after each pass: a later replacement can land on a
+        // position that carried an earlier guaranteed class.
+        $guards = [
+            '/\d/' => fn () => (string) random_int(0, 9),
+            '/[A-Z]/' => fn () => chr(random_int(65, 90)),
+            '/[a-z]/' => fn () => chr(random_int(97, 122)),
+            '/[!@#$%^&*()_+\-=]/' => fn () => self::ALPHABET[random_int(57, $max)],
+        ];
+
+        for ($pass = 0; $pass < 50; $pass++) {
+            $replaced = false;
+            foreach ($guards as $pattern => $replacement) {
+                if (! preg_match($pattern, $password)) {
+                    $password[random_int(0, self::LENGTH - 1)] = $replacement();
+                    $replaced = true;
+                }
+            }
+            if (! $replaced) {
+                break; // a full pass with every class present — done
+            }
         }
 
         return $password;

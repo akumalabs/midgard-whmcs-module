@@ -343,6 +343,7 @@ final class ApiClient
         curl_setopt($this->curlHandle, CURLOPT_HTTPHEADER, $headers);
         curl_setopt($this->curlHandle, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($this->curlHandle, CURLOPT_TIMEOUT, 30);
+        curl_setopt($this->curlHandle, CURLOPT_CONNECTTIMEOUT, 10);
         curl_setopt($this->curlHandle, CURLOPT_TCP_KEEPALIVE, 1);
 
         $rawBody = curl_exec($this->curlHandle);
@@ -360,7 +361,16 @@ final class ApiClient
         }
 
         if ($statusCode >= 400) {
-            $message = (string) ($decoded['message'] ?? 'Midgard API request failed.');
+            $message = (string) ($decoded['message'] ?? null);
+            if ($message === '' || $message === null) {
+                // Non-JSON failure (e.g. 502/504 HTML from a proxy): keep the
+                // status and a body snippet so WHMCS logs stay diagnosable.
+                $message = "Midgard API request failed (HTTP {$statusCode}).";
+                if ($rawBody !== '') {
+                    $message .= ' Body: ' . substr(strip_tags($rawBody), 0, 200);
+                }
+                $decoded = ['status_code' => $statusCode, 'body_snippet' => substr($rawBody, 0, 500)];
+            }
             throw new MidgardApiException($message, $statusCode, $decoded);
         }
 
