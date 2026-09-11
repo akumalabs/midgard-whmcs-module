@@ -141,6 +141,76 @@ class MetadataStore implements PasswordDispatchStore
     }
 
     /**
+     * Mark a claimed-but-unsent dispatch as queued for the cron worker.
+     * Only touches rows that have not been sent yet (idempotent).
+     */
+    public function queuePasswordDispatch(string $dispatchHash): void
+    {
+        $this->ensureSchema();
+
+        Capsule::table(self::EMAIL_TABLE)
+            ->where('dispatch_hash', $dispatchHash)
+            ->whereNull('sent_at')
+            ->update(['queued_at' => date('Y-m-d H:i:s')]);
+    }
+
+    /**
+     * Oldest queued-but-unsent dispatches (FIFO), bounded per cron run.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function pendingPasswordDispatches(int $limit = 10): array
+    {
+        $this->ensureSchema();
+
+        return Capsule::table(self::EMAIL_TABLE)
+            ->whereNull('sent_at')
+            ->whereNotNull('queued_at')
+            ->where('queue_attempts', '<', 5)
+            ->orderBy('created_at')
+            ->limit($limit)
+            ->get()
+            ->map(fn ($row) => (array) $row)
+            ->all();
+    }
+
+    public function incrementPasswordDispatchAttempts(string $dispatchHash): void
+    {
+        $this->ensureSchema();
+
+        Capsule::table(self::EMAIL_TABLE)
+            ->where('dispatch_hash', $dispatchHash)
+            ->increment('queue_attempts');
+    }
+
+    public function recordPasswordDispatchError(string $dispatchHash, string $message): void
+    {
+        $this->ensureSchema();
+
+        Capsule::table(self::EMAIL_TABLE)
+            ->where('dispatch_hash', $dispatchHash)
+            ->update(['last_error' => mb_substr($message, 0, 255)]);
+    }
+
+    /**
+     * True when a dispatch row exists for this service that was claimed but
+     * never sent — used by the async worker to re-attach the stored password.
+     */
+    public function pendingDispatchForService(int $serviceId): ?array
+    {
+        $this->ensureSchema();
+
+        $row = Capsule::table(self::EMAIL_TABLE)
+            ->where('service_id', $serviceId)
+            ->whereNull('sent_at')
+            ->whereNotNull('queued_at')
+            ->orderBy('created_at')
+            ->first();
+
+        return $row !== null ? (array) $row : null;
+    }
+
+    /**
      * Atomically claim the right to provision (CreateAccount) for a given
      * service. Backed by an INSERT against a primary-keyed table, so a
      * concurrent second call (e.g. a WHMCS cron retry firing while a prior
@@ -255,6 +325,8 @@ class MetadataStore implements PasswordDispatchStore
             });
         }
 
+        $this->ensureEmailColumns($schema);
+
         if (! $schema->hasTable(self::PROVISION_LOCK_TABLE)) {
             $schema->create(self::PROVISION_LOCK_TABLE, function ($table): void {
                 $table->integer('service_id')->primary();
@@ -268,6 +340,37 @@ class MetadataStore implements PasswordDispatchStore
         }
 
         self::$schemaReady = true;
+    }
+
+    /**
+     * Additive column migration for the email dispatch table. Runs on every
+     * boot path (existing installs get the queue columns lazily).
+     */
+    private function ensureEmailColumns($schema): void
+    {
+        if (! $schema->hasTable(self::EMAIL_TABLE)) {
+            return;
+        }
+
+        $columns = [
+            'queued_at' => static function ($table): void {
+                $table->dateTime('queued_at')->nullable();
+            },
+            'queue_attempts' => static function ($table): void {
+                $table->integer('queue_attempts')->default(0);
+            },
+            'last_error' => static function ($table): void {
+                $table->string('last_error', 255)->nullable();
+            },
+        ];
+
+        foreach ($columns as $name => $definition) {
+            if (! $schema->hasColumn(self::EMAIL_TABLE, $name)) {
+                $schema->table(self::EMAIL_TABLE, static function ($table) use ($definition): void {
+                    $definition($table);
+                });
+            }
+        }
     }
 
     /**

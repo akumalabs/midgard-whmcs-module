@@ -7,14 +7,16 @@ namespace MidgardWhmcs;
 final class PasswordMailer
 {
     /**
-     * Send the one-time credentials email, injecting:
-     *   - Midgard-specific variables (midgard_*, server_password, server_primary_ipv4/v6)
-     *   - Standard WHMCS merge field aliases (service_password, service_dedicated_ip)
-     *     so that stock WHMCS email templates also render credentials correctly.
+     * Queue the one-time credentials email for async delivery by the
+     * WHMCS cron worker (see hooks.php AfterCronJob). The password is
+     * sealed into the service metadata immediately, so the CreateAccount
+     * request never blocks on SMTP — slow mail servers can no longer
+     * 504 provisioning, and a failed send can no longer report failure
+     * AFTER the server was successfully deployed.
      *
      * @param array<string, mixed> $params
      */
-    public static function sendOneTime(array $params, MetadataStore $store, string $serverUuid, string $password): void
+    public static function queue(array $params, MetadataStore $store, string $serverUuid, string $password): void
     {
         $serviceId = (int) ($params['serviceid'] ?? 0);
         if ($serviceId <= 0 || trim($serverUuid) === '' || trim($password) === '') {
@@ -23,15 +25,91 @@ final class PasswordMailer
 
         $dispatchHash = $store->claimPasswordDispatch($serviceId, $serverUuid);
         if ($dispatchHash === null) {
+            // Already claimed (idempotency guard) — nothing to do.
             return;
         }
 
         try {
-            if (! function_exists('localAPI') && ! function_exists(__NAMESPACE__ . '\localAPI')) {
+            $templateName = Config::option($params, 'welcome_email_template', 'Midgard Provisioning Credentials');
+
+            $meta = $store->get($serviceId);
+            $meta['midgard_pending_password'] = self::seal($password);
+            if (trim((string) ($meta['midgard_welcome_template'] ?? '')) !== $templateName) {
+                $meta['midgard_welcome_template'] = $templateName;
+            }
+            $store->upsert($serviceId, $meta);
+
+            $store->queuePasswordDispatch($dispatchHash);
+        } catch (\Throwable $e) {
+            $store->releasePasswordDispatch($dispatchHash);
+            throw $e;
+        }
+    }
+
+    /**
+     * Send the one-time credentials email, injecting:
+     *   - Midgard-specific variables (midgard_*, server_password, server_primary_ipv4/v6)
+     *   - Standard WHMCS merge field aliases (service_password, service_dedicated_ip)
+     *     so that stock WHMCS email templates also render credentials correctly.
+     *
+     * Two call shapes:
+     *   - Sync (legacy/immediate): pass $password — a fresh dispatch is claimed
+     *     and released again when sending fails.
+     *   - Async (cron worker): pass only $dispatchHash — the sealed password is
+     *     loaded from metadata and the dispatch row is kept on failure so the
+     *     next cron run can retry.
+     *
+     * @param array<string, mixed> $params
+     */
+    public static function sendOneTime(
+        array $params,
+        MetadataStore $store,
+        string $serverUuid,
+        ?string $password = null,
+        ?string $dispatchHash = null
+    ): void {
+        $serviceId = (int) ($params['serviceid'] ?? 0);
+        if ($serviceId <= 0 || trim($serverUuid) === '') {
+            return;
+        }
+
+        $ownsDispatch = $dispatchHash === null;
+        if ($ownsDispatch) {
+            if (trim((string) $password) === '') {
+                return;
+            }
+            $dispatchHash = $store->claimPasswordDispatch($serviceId, $serverUuid);
+            if ($dispatchHash === null) {
+                return;
+            }
+        }
+
+        try {
+            if ($password === null) {
+                $meta = $store->get($serviceId);
+                $password = self::unseal((string) ($meta['midgard_pending_password'] ?? ''));
+                if ($password === null || trim($password) === '') {
+                    // Nothing sealed (e.g. row orphaned) — leave the dispatch
+                    // row untouched so the attempt counter keeps it honest.
+                    return;
+                }
+            }
+
+            if (! function_exists('localAPI') && ! function_exists(__NAMESPACE__ . '\\localAPI')) {
                 throw new \RuntimeException('WHMCS localAPI function is unavailable.');
             }
 
-            $templateName = Config::option($params, 'welcome_email_template', 'Midgard Provisioning Credentials');
+            // Resolve the template: from params when present (sync path), else
+            // the value persisted at queue time (cron params carry no
+            // configoptions), else the module default.
+            $templateName = Config::option($params, 'welcome_email_template', '');
+            if ($templateName === '') {
+                $templateName = trim((string) ($store->get($serviceId)['midgard_welcome_template'] ?? ''));
+            }
+            if ($templateName === '') {
+                $templateName = 'Midgard Provisioning Credentials';
+            }
+
             $clientId = (int) ($params['userid'] ?? 0);
             if ($serviceId <= 0 && $clientId <= 0) {
                 throw new \RuntimeException('Unable to send credentials email: missing service/client ID.');
@@ -89,6 +167,7 @@ final class PasswordMailer
 
                 if (($result['result'] ?? 'error') === 'success') {
                     $store->finalizePasswordDispatch($serviceId, $dispatchHash);
+                    self::clearSealedPassword($store, $serviceId);
                     return;
                 }
 
@@ -124,8 +203,67 @@ final class PasswordMailer
                 "Failed to send credentials email after {$lastType} attempt (id={$lastId}): {$lastMessage}"
             );
         } catch (\Throwable $e) {
-            $store->releasePasswordDispatch($dispatchHash);
+            // Only release when we own the dispatch (sync path). The async
+            // worker borrows an existing queued row and must keep it so the
+            // next cron run can retry.
+            if ($ownsDispatch) {
+                $store->releasePasswordDispatch($dispatchHash);
+            }
             throw $e;
+        }
+    }
+
+    /**
+     * Seal a password into metadata storage. Prefers WHMCS's own
+     * encryption (same trust domain as the service password fields);
+     * falls back to reversible base64 when encrypt() is unavailable.
+     */
+    private static function seal(string $password): string
+    {
+        if (function_exists('encrypt')) {
+            $encrypted = @\encrypt($password);
+            if (is_string($encrypted) && $encrypted !== '') {
+                return 'enc:' . base64_encode($encrypted);
+            }
+        }
+
+        return 'plain:' . base64_encode($password);
+    }
+
+    private static function unseal(string $blob): ?string
+    {
+        if ($blob === '') {
+            return null;
+        }
+
+        if (str_starts_with($blob, 'enc:')) {
+            if (! function_exists('decrypt')) {
+                return null;
+            }
+            $raw = base64_decode(substr($blob, 4), true);
+            if ($raw === false || $raw === '') {
+                return null;
+            }
+            $decrypted = @\decrypt($raw);
+
+            return is_string($decrypted) && $decrypted !== '' ? $decrypted : null;
+        }
+
+        if (str_starts_with($blob, 'plain:')) {
+            $raw = base64_decode(substr($blob, 6), true);
+
+            return is_string($raw) && $raw !== '' ? $raw : null;
+        }
+
+        return null;
+    }
+
+    private static function clearSealedPassword(MetadataStore $store, int $serviceId): void
+    {
+        $meta = $store->get($serviceId);
+        if (($meta['midgard_pending_password'] ?? '') !== '') {
+            $meta['midgard_pending_password'] = '';
+            $store->upsert($serviceId, $meta);
         }
     }
 }

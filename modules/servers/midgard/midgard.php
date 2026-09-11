@@ -658,17 +658,24 @@ function midgard_CreateAccount(array $params)
         }
 
         try {
-            PasswordMailer::sendOneTime($params, $store, $midgardServerUuid, $initialPassword);
+            // Async by design: sealing the password + marking the dispatch row
+            // is fast; the SMTP round-trip happens in the cron worker
+            // (hooks.php AfterCronJob). A slow mail server can no longer push
+            // CreateAccount past the PHP-FPM limit (the WHMCS-side 504), and
+            // a failed send can no longer report provisioning failure AFTER
+            // the server was already created.
+            PasswordMailer::queue($params, $store, $midgardServerUuid, $initialPassword);
         } catch (\Throwable $e) {
-            \MidgardWhmcs\DiagnosticLogger::log('sendOneTimePasswordEmail', ['serviceid' => $serviceId], ['message' => $e->getMessage()]);
+            \MidgardWhmcs\DiagnosticLogger::log('queueOneTimePasswordEmail', ['serviceid' => $serviceId], ['message' => $e->getMessage()]);
 
-            $message = 'Provisioning blocked: failed to deliver credentials email. ' . $e->getMessage();
+            // Queueing is a metadata write; failure here must not resurrect
+            // the old "error after successful provisioning" path. Record the
+            // state, keep the service Active, and surface a warning only.
             $meta = $store->get($serviceId);
-            $meta['midgard_last_error'] = $message;
+            $meta['midgard_last_error'] = 'Credentials email could not be queued: ' . $e->getMessage();
             $store->upsert($serviceId, $meta);
-            midgard_setHostingStatus($serviceId, 'Pending');
 
-            midgard_logDiagnostic('createAccount.passwordEmailFailed', [
+            midgard_logDiagnostic('createAccount.passwordQueueFailed', [
                 'serviceid' => $serviceId,
                 'panel_base_url' => $panelBaseUrl,
                 'server_id' => $midgardServerIdInt,
@@ -677,7 +684,7 @@ function midgard_CreateAccount(array $params)
                 'message' => $e->getMessage(),
             ]);
 
-            return $message;
+            return 'success';
         }
 
         $meta = $store->get($serviceId);

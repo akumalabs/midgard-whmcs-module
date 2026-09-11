@@ -6,6 +6,7 @@ use Illuminate\Database\Capsule\Manager as Capsule;
 use MidgardWhmcs\Config;
 use MidgardWhmcs\EmailTemplateGuard;
 use MidgardWhmcs\MetadataStore;
+use MidgardWhmcs\PasswordMailer;
 use MidgardWhmcs\SyncService;
 
 if (! defined('WHMCS')) {
@@ -80,7 +81,62 @@ function midgard_hookResolveConfiguredTemplateForService(int $serviceId, Metadat
     return $resolved !== '' ? $resolved : 'Midgard Provisioning Credentials';
 }
 
-add_hook('AfterCronJob', 1, function (): void {
+/**
+ * Async credentials delivery: flush queued one-time password emails.
+ * Runs at the START of the cron hook so freshly queued dispatches go out
+ * in the same run that follows provisioning. Every failure path keeps the
+ * queued row (attempt counter + last_error recorded) so the next cron run
+ * retries, up to the attempt cap in MetadataStore::pendingPasswordDispatches().
+ */
+function midgard_cronFlushQueuedPasswordEmails(): void
+{
+    $store = new MetadataStore();
+
+    try {
+        $pending = $store->pendingPasswordDispatches(10);
+    } catch (\Throwable $e) {
+        logModuleCall('midgard', 'cronPasswordEmailFlush', [], 'queue read failed: ' . $e->getMessage(), null, []);
+        return;
+    }
+
+    foreach ($pending as $dispatch) {
+        $serviceId = (int) ($dispatch['service_id'] ?? 0);
+        $dispatchHash = (string) ($dispatch['dispatch_hash'] ?? '');
+        if ($serviceId <= 0 || $dispatchHash === '') {
+            continue;
+        }
+
+        // WHMCS client id comes from tblhosting (midgard_user_id in the meta
+        // table is the PANEL user id — never use it as a localAPI userid).
+        $whmcsUserid = (int) Capsule::table('tblhosting')->where('id', $serviceId)->value('userid');
+        $params = [
+            'serviceid' => $serviceId,
+            'userid' => $whmcsUserid,
+        ];
+
+        try {
+            $store->incrementPasswordDispatchAttempts($dispatchHash);
+            PasswordMailer::sendOneTime($params, $store, (string) ($dispatch['server_uuid'] ?? ''), null, $dispatchHash);
+        } catch (\Throwable $e) {
+            $store->recordPasswordDispatchError($dispatchHash, $e->getMessage());
+            logModuleCall(
+                'midgard',
+                'cronPasswordEmailFlush',
+                ['serviceid' => $serviceId, 'attempt' => (int) ($dispatch['queue_attempts'] ?? 0) + 1],
+                $e->getMessage(),
+                null,
+                []
+            );
+        }
+    }
+}
+
+/**
+ * Legacy cron duty: keep panel metadata (state, IPs) fresh for every
+ * Midgard service.
+ */
+function midgard_cronSyncAllServices(): void
+{
     $store = new MetadataStore();
 
     $services = Capsule::table('tblhosting')
@@ -128,6 +184,11 @@ add_hook('AfterCronJob', 1, function (): void {
             );
         }
     }
+}
+
+add_hook('AfterCronJob', 1, function (): void {
+    midgard_cronFlushQueuedPasswordEmails();
+    midgard_cronSyncAllServices();
 });
 
 add_hook('EmailPreSend', 1, function (array $vars): array {

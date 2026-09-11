@@ -54,8 +54,9 @@ namespace MidgardWhmcs\Tests\Unit {
     /**
      * Fake MetadataStore that allows tests to inject IP metadata
      * for credential rendering without touching the database.
+     * Not final: individual tests override claimPasswordDispatch inline.
      */
-    final class FakeMetadataStore extends MetadataStore
+    class FakeMetadataStore extends MetadataStore
     {
         /** @var array<int, array<string, mixed>> */
         public array $claims = [];
@@ -66,8 +67,11 @@ namespace MidgardWhmcs\Tests\Unit {
         /** @var array<int, string> */
         public array $released = [];
 
+        /** @var array<int, string> */
+        public array $queued = [];
+
         /** @var array<string, mixed> */
-        private array $meta = [
+        public array $meta = [
             'midgard_primary_ipv4' => '',
             'midgard_primary_ipv6' => '',
         ];
@@ -101,6 +105,11 @@ namespace MidgardWhmcs\Tests\Unit {
             ];
 
             return 'dispatch-hash';
+        }
+
+        public function queuePasswordDispatch(string $dispatchHash): void
+        {
+            $this->queued[] = $dispatchHash;
         }
 
         public function finalizePasswordDispatch(int $serviceId, string $dispatchHash): void
@@ -246,6 +255,141 @@ namespace MidgardWhmcs\Tests\Unit {
             }
 
             return $decodedVars[$key] ?? null;
+        }
+
+        // ── Async queue path (PasswordMailer::queue + borrowed dispatch) ──
+
+        public function test_queue_seals_password_and_marks_dispatch_queued(): void
+        {
+            $store = new FakeMetadataStore();
+
+            PasswordMailer::queue(['serviceid' => 77, 'userid' => 88], $store, 'uuid-77', 'QueuedPass123!');
+
+            $this->assertCount(1, $store->claims);
+            $this->assertCount(1, $store->queued);
+            $this->assertSame('dispatch-hash', $store->queued[0]);
+            $this->assertSame('Midgard Provisioning Credentials', $store->meta['midgard_welcome_template'] ?? '');
+
+            // encrypt()/decrypt() are undefined in the test environment, so
+            // the seal must fall back to the reversible 'plain:' prefix.
+            $sealed = (string) ($store->meta['midgard_pending_password'] ?? '');
+            $this->assertStringStartsWith('plain:', $sealed);
+            $this->assertSame('QueuedPass123!', base64_decode(substr($sealed, 6), true));
+        }
+
+        public function test_queue_is_noop_when_dispatch_already_claimed(): void
+        {
+            $store = new class extends FakeMetadataStore {
+                public function claimPasswordDispatch(int $serviceId, string $serverUuid): ?string
+                {
+                    return null; // idempotency guard hit
+                }
+            };
+
+            PasswordMailer::queue(['serviceid' => 77], $store, 'uuid-77', 'Pass!');
+
+            $this->assertCount(0, $store->queued);
+            $this->assertSame('', $store->meta['midgard_pending_password'] ?? '');
+        }
+
+        public function test_async_send_uses_sealed_password_and_finalizes(): void
+        {
+            $store = new FakeMetadataStore();
+            $store->setMeta([
+                'midgard_pending_password' => 'plain:' . base64_encode('SealedSecret1!'),
+                'midgard_welcome_template' => 'Midgard Provisioning Credentials',
+            ]);
+
+            PasswordMailerLocalApiSpy::$responses = [
+                ['result' => 'success'],
+            ];
+
+            PasswordMailer::sendOneTime(
+                ['serviceid' => 77, 'userid' => 88],
+                $store,
+                'uuid-77',
+                null,
+                'dispatch-hash'
+            );
+
+            $this->assertCount(1, PasswordMailerLocalApiSpy::$calls);
+            $this->assertSame('SealedSecret1!', $this->extractVarFromCall(0, 'midgard_server_password'));
+            $this->assertCount(1, $store->finalized);
+            $this->assertCount(0, $store->released);
+            // Sealed password must be wiped after successful delivery.
+            $this->assertSame('', $store->meta['midgard_pending_password'] ?? '');
+        }
+
+        public function test_async_send_failure_keeps_dispatch_for_retry(): void
+        {
+            $store = new FakeMetadataStore();
+            $store->setMeta([
+                'midgard_pending_password' => 'plain:' . base64_encode('RetryPass1!'),
+            ]);
+            PasswordMailerLocalApiSpy::$responses = [
+                ['result' => 'error', 'message' => 'SMTP timeout'],
+                ['result' => 'error', 'message' => 'SMTP timeout'],
+            ];
+
+            try {
+                PasswordMailer::sendOneTime(
+                    ['serviceid' => 77, 'userid' => 88],
+                    $store,
+                    'uuid-77',
+                    null,
+                    'dispatch-hash'
+                );
+                $this->fail('Expected RuntimeException');
+            } catch (\RuntimeException $e) {
+                $this->assertStringContainsString('Failed to send credentials email', $e->getMessage());
+            }
+
+            // The worker only BORROWS the queued row: on failure it must stay
+            // queued (released stays empty) so the next cron run retries.
+            $this->assertCount(0, $store->finalized);
+            $this->assertCount(0, $store->released);
+            $this->assertSame('RetryPass1!', base64_decode(
+                substr((string) ($store->meta['midgard_pending_password'] ?? ''), 6),
+                true
+            ));
+        }
+
+        public function test_async_send_without_sealed_password_is_silent_noop(): void
+        {
+            $store = new FakeMetadataStore(); // no midgard_pending_password
+
+            PasswordMailer::sendOneTime(
+                ['serviceid' => 77, 'userid' => 88],
+                $store,
+                'uuid-77',
+                null,
+                'dispatch-hash'
+            );
+
+            $this->assertCount(0, PasswordMailerLocalApiSpy::$calls);
+            $this->assertCount(0, $store->finalized);
+            $this->assertCount(0, $store->released);
+        }
+
+        public function test_queue_then_async_send_roundtrip_delivers_same_password(): void
+        {
+            $store = new FakeMetadataStore();
+
+            PasswordMailer::queue(['serviceid' => 91, 'userid' => 92], $store, 'uuid-91', 'RoundTrip9!');
+
+            PasswordMailer::sendOneTime(
+                ['serviceid' => 91, 'userid' => 92],
+                $store,
+                'uuid-91',
+                null,
+                $store->queued[0]
+            );
+
+            $this->assertCount(1, PasswordMailerLocalApiSpy::$calls);
+            $this->assertSame('RoundTrip9!', $this->extractVarFromCall(0, 'midgard_server_password'));
+            $this->assertSame('RoundTrip9!', $this->extractVarFromCall(0, 'service_password'));
+            $this->assertSame('RoundTrip9!', $this->extractVarFromCall(0, 'server_password'));
+            $this->assertCount(1, $store->finalized);
         }
     }
 }
