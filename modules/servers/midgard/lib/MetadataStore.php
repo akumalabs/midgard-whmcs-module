@@ -111,7 +111,37 @@ class MetadataStore implements PasswordDispatchStore
 
             return $dispatchHash;
         } catch (\Throwable $e) {
-            return null;
+            // Row already exists (duplicate dispatch key). Historically this
+            // returned null — which silently ABORTED queueing and left rows
+            // stuck forever when a claim was interrupted before send (seen in
+            // production: credentials email never dispatched). Recycle instead:
+            //  - sent before            → re-arm (a new email must go out);
+            //  - claimed but never sent → re-arm (the stuck-row case);
+            //  - already queued, unsent → keep as-is (cron will deliver; the
+            //    caller re-seals the password so the send carries the latest).
+            $recycled = Capsule::table(self::EMAIL_TABLE)
+                ->where('dispatch_hash', $dispatchHash)
+                ->where(function ($query) {
+                    $query->whereNotNull('sent_at')->orWhereNull('queued_at');
+                })
+                ->update([
+                    'sent_at' => null,
+                    'queued_at' => null,
+                    'queue_attempts' => 0,
+                    'last_error' => null,
+                ]);
+
+            if ($recycled > 0) {
+                return $dispatchHash;
+            }
+
+            // Already queued and unsent — keep its state, the worker owns it.
+            if (Capsule::table(self::EMAIL_TABLE)->where('dispatch_hash', $dispatchHash)->exists()) {
+                return $dispatchHash;
+            }
+
+            // No row and the insert failed — a real DB error, surface it.
+            throw $e;
         }
     }
 

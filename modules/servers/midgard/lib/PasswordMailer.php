@@ -40,6 +40,15 @@ final class PasswordMailer
             $store->upsert($serviceId, $meta);
 
             $store->queuePasswordDispatch($dispatchHash);
+
+            // DiagnosticLogger is defined in DiagnosticSanitizer.php, which is
+            // only guaranteed-loaded in the full module bootstrap (WHMCS).
+            if (class_exists(\MidgardWhmcs\DiagnosticLogger::class)) {
+                \MidgardWhmcs\DiagnosticLogger::log('passwordEmailQueued', [
+                    'serviceid' => $serviceId,
+                    'dispatch' => substr($dispatchHash, 0, 12),
+                ], ['status' => 'queued_for_cron']);
+            }
         } catch (\Throwable $e) {
             $store->releasePasswordDispatch($dispatchHash);
             throw $e;
