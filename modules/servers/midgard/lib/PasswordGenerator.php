@@ -7,14 +7,22 @@ namespace MidgardWhmcs;
 final class PasswordGenerator
 {
     private const LENGTH = 16;
-    private const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*()_+-=';
+    private const SYMBOLS = '!@#$%^&*()_+-=';
+    private const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789' . self::SYMBOLS;
 
     public static function generate(): string
     {
         $max = strlen(self::ALPHABET) - 1;
-        $password = '';
+        $alnumMax = $max - strlen(self::SYMBOLS); // alnum prefix of ALPHABET
 
-        for ($i = 0; $i < self::LENGTH; $i++) {
+        // First character MUST be alphanumeric: the password reaches
+        // cloudbase-init inside PVE's generated user-data YAML, and a leading
+        // YAML indicator character (e.g. '@', '|', '>', '`') can break the
+        // parse (UserDataPlugin ScannerError). Digits still satisfy the
+        // panel's ->numbers() rule when combined with the guards below.
+        $password = self::ALPHABET[random_int(0, $alnumMax)];
+
+        for ($i = 1; $i < self::LENGTH; $i++) {
             $password .= self::ALPHABET[random_int(0, $max)];
         }
 
@@ -23,7 +31,8 @@ final class PasswordGenerator
         // alphabet can miss a required class, so guarantee all four —
         // otherwise server creation fails with a 422 the operator never sees.
         // Re-check after each pass: a later replacement can land on a
-        // position that carried an earlier guaranteed class.
+        // position that carried an earlier guaranteed class. Replacements
+        // never touch position 0 (kept alphanumeric, see above).
         $guards = [
             '/\d/' => fn () => (string) random_int(0, 9),
             '/[A-Z]/' => fn () => chr(random_int(65, 90)),
@@ -35,7 +44,7 @@ final class PasswordGenerator
             $replaced = false;
             foreach ($guards as $pattern => $replacement) {
                 if (! preg_match($pattern, $password)) {
-                    $password[random_int(0, self::LENGTH - 1)] = $replacement();
+                    $password[random_int(1, self::LENGTH - 1)] = $replacement();
                     $replaced = true;
                 }
             }
