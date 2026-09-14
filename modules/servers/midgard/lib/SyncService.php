@@ -107,6 +107,53 @@ final class SyncService
     }
 
     /**
+     * Hydrate module metadata from an API server payload WITHOUT any extra
+     * HTTP round-trip. Used right after createServer(): the panel's 201
+     * response already carries the formatted server (addresses included),
+     * so the sequential sync/ensure chain can be skipped on the happy path.
+     * Returns the network summary so callers can decide whether a legacy
+     * fallback chain is still required (e.g. a required IPv4 that never
+     * materialized).
+     */
+    public static function hydrateFromServerData(int $serviceId, array $serverData, MetadataStore $store): array
+    {
+        if ($serverData === []) {
+            return ['addresses' => [], 'primary_ipv4' => '', 'primary_ipv6' => '', 'primary_ipv6_subnet' => ''];
+        }
+
+        $networkSummary = self::extractNetworkSummary($serverData);
+        if ($networkSummary['addresses'] === [] && $networkSummary['primary_ipv4'] === '' && $networkSummary['primary_ipv6'] === '') {
+            return $networkSummary;
+        }
+
+        $meta = $store->get($serviceId);
+        $meta['midgard_addresses'] = $networkSummary['addresses'];
+        $meta['midgard_primary_ipv4'] = $networkSummary['primary_ipv4'];
+        $meta['midgard_primary_ipv6'] = $networkSummary['primary_ipv6'];
+        $serverName = trim((string) ($serverData['name'] ?? ''));
+        $hostname = trim((string) ($serverData['hostname'] ?? ''));
+        if ($serverName !== '') {
+            $meta['midgard_server_name'] = $serverName;
+        }
+        if ($hostname !== '') {
+            $meta['midgard_server_hostname'] = $hostname;
+        }
+        $store->upsert($serviceId, $meta);
+
+        try {
+            self::syncHostingNetwork($serviceId, $networkSummary);
+            if ($serverName !== '' && $hostname !== '') {
+                self::syncHostingIdentity($serviceId, $serverName, $hostname);
+            }
+        } catch (\Throwable $e) {
+            // WHMCS table writes are cosmetic here (tblhosting mirrors);
+            // hydration must keep working in contexts without them (tests).
+        }
+
+        return $networkSummary;
+    }
+
+    /**
      * @param array{
      *   addresses: array<int, array{id: int, address: string, type: string, is_primary: bool}>,
      *   primary_ipv4: string,

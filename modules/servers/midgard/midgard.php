@@ -518,10 +518,21 @@ function midgard_CreateAccount(array $params)
 
         SyncService::syncHostingIdentity($serviceId, $serverName, $hostname);
 
+        // ASYNC FAST PATH: the panel's 201 response already carries the fully
+        // formatted server (addresses included — CreateAccount assigns
+        // address_ids in-request and bootstraps the IPv6 /128 server-side).
+        // Hydrate module meta LOCALLY instead of running 3+ extra API
+        // round-trips (ensure-IPv4 → ensure-IPv6 → normalize → sync) per create.
+        $hydrated = SyncService::hydrateFromServerData($serviceId, $serverData, $store);
+        $usedLegacyChain = false;
+
         if (empty($addressIds)) {
-            // Legacy fallback path: panel did not receive pre-resolved address_ids,
-            // so we fall back to the sequential ensurePrimaryIpv4 →
-            // ensurePrimaryIpv6 → normalizePrimaryIp chain.
+            // LEGACY FALLBACK (rare): the panel did not receive pre-resolved
+            // address_ids — run the sequential chain exactly as before, but
+            // only for the parts the fast path did not already satisfy
+            // (primary IPv4 present in the 201 payload = already assigned).
+            $usedLegacyChain = true;
+            $stage = 'ensure_required_ipv4';
             $ipv4EnsureResult = [
                 'ensured' => true,
                 'attempted' => false,
@@ -530,7 +541,7 @@ function midgard_CreateAccount(array $params)
                 'error' => '',
             ];
 
-            if ($requireIpv4) {
+            if ($requireIpv4 && trim((string) ($hydrated['primary_ipv4'] ?? '')) === '') {
                 $stage = 'ensure_required_ipv4';
                 $ipv4EnsureResult = ProvisioningNetworkService::ensurePrimaryIpv4($client, $midgardServerIdInt);
 
@@ -588,9 +599,10 @@ function midgard_CreateAccount(array $params)
 
             // Non-blocking IPv6 enforcement: attempt to ensure a primary IPv6 subnet
             // (/64) is assigned, but only when the admin has explicitly toggled
-            // IPv6 in the provisioning preflight. The panel auto-bootstraps a
-            // /128 individual from it. Failures are logged but do NOT block provisioning.
-            if ($requireIpv6) {
+            // IPv6 in the provisioning preflight AND the legacy chain is running
+            // (the async fast path gets IPv6 from the panel itself). Failures
+            // are logged but do NOT block provisioning.
+            if ($usedLegacyChain && $requireIpv6) {
                 try {
                     $ipv6EnsureResult = ProvisioningNetworkService::ensurePrimaryIpv6($client, $midgardServerIdInt);
 
@@ -615,9 +627,9 @@ function midgard_CreateAccount(array $params)
             }
 
             // Canonical normalization: ensure the panel's primary IP follows the
-            // IPv4 > IPv6 priority. This runs AFTER all sequential assignments
-            // to resolve any race between ensurePrimaryIpv4 and ensurePrimaryIpv6.
-            // Non-blocking: failures are logged but do NOT block provisioning.
+            // IPv4 > IPv6 priority. Only needed after the LEGACY sequential
+            // assignments — the fast path trusts the panel's canonical payload.
+            if ($usedLegacyChain) {
             try {
                 $normalizeResult = ProvisioningNetworkService::normalizePrimaryIp($client, $midgardServerIdInt);
 
@@ -639,22 +651,27 @@ function midgard_CreateAccount(array $params)
                     'message' => $e->getMessage(),
                 ]);
             }
+            }
         }
 
         // Single consolidated sync: refresh panel metadata once after ALL
         // network operations complete so all canonical IPs are hydrated
         // before credential dispatch.  Eliminates redundant intermediate
         // syncs that added ~2-3 round-trips to the provisioning flow.
-        try {
-            $meta = SyncService::syncFromPanel($params, $store, includeProgress: false);
-        } catch (\Throwable $e) {
-            midgard_logDiagnostic('createAccount.syncBeforeEmail.exception', [
-                'serviceid' => $serviceId,
-                'panel_base_url' => $panelBaseUrl,
-                'server_id' => $midgardServerIdInt,
-            ], [
-                'message' => $e->getMessage(),
-            ]);
+        // The async fast path already hydrated locally from the 201 payload,
+        // so this only runs after the legacy sequential chain.
+        if ($usedLegacyChain) {
+            try {
+                $meta = SyncService::syncFromPanel($params, $store, includeProgress: false);
+            } catch (\Throwable $e) {
+                midgard_logDiagnostic('createAccount.syncBeforeEmail.exception', [
+                    'serviceid' => $serviceId,
+                    'panel_base_url' => $panelBaseUrl,
+                    'server_id' => $midgardServerIdInt,
+                ], [
+                    'message' => $e->getMessage(),
+                ]);
+            }
         }
 
         try {
