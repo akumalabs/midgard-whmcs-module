@@ -87,22 +87,21 @@ class MetadataStoreDispatchTest extends TestCase
 
     public function test_sealed_password_survives_read_modify_write(): void
     {
-        // Regression for the 2026-09-14 incident: queue() sealed the password
-        // into $meta but upsert() had no midgard_pending_password column in its
-        // payload, so the blob was silently dropped and the cron worker found
-        // nothing to unseal (attempts burned, last_error never set).
-        $this->store->upsert(21, [
-            'midgard_server_id' => '42',
-            'midgard_pending_password' => 'plain:U2VjcmV0UGFzcw==',
-        ]);
+        // Regression for the 2026-09-14 incident: the blob must persist across
+        // sync-style full rewrites. Current contract: it is written ONLY via
+        // patchMeta(); upsert() deliberately never touches the blob column.
+        $this->store->upsert(21, ['midgard_server_id' => '42']);
+        $this->store->patchMeta(21, ['midgard_pending_password' => 'plain:U2VjcmV0UGFzcw==']);
 
         $meta = $this->store->get(21);
         $this->assertSame('plain:U2VjcmV0UGFzcw==', $meta['midgard_pending_password']);
 
-        // A later full-meta rewrite (sync path) must preserve the blob.
+        // A later full-meta rewrite (sync path) must preserve the blob while
+        // still updating the columns it owns.
         $meta['midgard_server_id'] = '43';
         $this->store->upsert(21, $meta);
         $this->assertSame('plain:U2VjcmV0UGFzcw==', $this->store->get(21)['midgard_pending_password']);
+        $this->assertSame('43', $this->store->get(21)['midgard_server_id']);
     }
 
     public function test_queue_persists_sealed_password_for_cron_worker(): void
@@ -123,5 +122,28 @@ class MetadataStoreDispatchTest extends TestCase
             ->whereNotNull('queued_at')
             ->count();
         $this->assertSame(1, $pending);
+    }
+
+    public function test_patch_survives_stale_full_upsert(): void
+    {
+        // The burst-race: a SyncService-style RMW built from a pre-seal get()
+        // must NOT wipe a blob that was sealed after that get().
+        $this->store->upsert(31, ['midgard_server_id' => '7']);
+        $stale = $this->store->get(31); // sync's read — no blob yet
+        $this->store->patchMeta(31, ['midgard_pending_password' => 'plain:U2VjcmV0UGFzcw==']); // queue() seals
+        $this->store->upsert(31, $stale); // sync's write — blob-less array
+
+        $this->assertSame(
+            'plain:U2VjcmV0UGFzcw==',
+            $this->store->get(31)['midgard_pending_password'],
+            'targeted patch must survive a stale full-meta overwrite'
+        );
+    }
+
+    public function test_patch_creates_row_when_missing(): void
+    {
+        $this->store->patchMeta(32, ['midgard_pending_password' => 'plain:QQ==']);
+        $this->assertSame('plain:QQ==', $this->store->get(32)['midgard_pending_password']);
+        $this->assertSame('', $this->store->get(32)['midgard_server_id'], 'defaults fill untouched columns');
     }
 }

@@ -97,6 +97,16 @@ namespace MidgardWhmcs\Tests\Unit {
             $this->meta = array_merge($this->meta, $data);
         }
 
+        public function patchMeta(int $serviceId, array $data): void
+        {
+            // Mirror the real store's targeted-write semantics.
+            foreach (['midgard_pending_password', 'midgard_welcome_template', 'midgard_password_email_sent_at'] as $key) {
+                if (array_key_exists($key, $data)) {
+                    $this->meta[$key] = (string) $data[$key];
+                }
+            }
+        }
+
         public function claimPasswordDispatch(int $serviceId, string $serverUuid): ?string
         {
             $this->claims[] = [

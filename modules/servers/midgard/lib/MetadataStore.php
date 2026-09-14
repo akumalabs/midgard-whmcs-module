@@ -66,7 +66,11 @@ class MetadataStore implements PasswordDispatchStore
             'midgard_last_error' => (string) ($data['midgard_last_error'] ?? ''),
             'midgard_welcome_template' => (string) ($data['midgard_welcome_template'] ?? ''),
             'midgard_password_email_sent_at' => (string) ($data['midgard_password_email_sent_at'] ?? ''),
-            'midgard_pending_password' => (string) ($data['midgard_pending_password'] ?? ''),
+            // NOTE: midgard_pending_password is DELIBERATELY NOT written here.
+            // upsert() is a full-row overwrite built from a get() snapshot; a
+            // concurrent sync (read pre-seal, write post-seal) would wipe the
+            // just-sealed blob. The sealed password is managed EXCLUSIVELY via
+            // patchMeta(), which updates only its own columns.
             'midgard_addresses' => $this->encodeAddresses($data['midgard_addresses'] ?? []),
             'midgard_primary_ipv4' => (string) ($data['midgard_primary_ipv4'] ?? ''),
             'midgard_primary_ipv6' => (string) ($data['midgard_primary_ipv6'] ?? ''),
@@ -93,6 +97,45 @@ class MetadataStore implements PasswordDispatchStore
     {
         $this->ensureSchema();
         Capsule::table(self::META_TABLE)->where('service_id', $serviceId)->delete();
+    }
+
+    /**
+     * Targeted metadata write for keys that must not be lost to a
+     * read-modify-write race. This store's upsert() is a FULL-ROW overwrite,
+     * so a concurrent SyncService::syncFromPanel() built from a pre-seal
+     * get() would otherwise wipe a just-sealed one-time password. Only the
+     * provided keys are touched; every other column is left as-is.
+     */
+    public function patchMeta(int $serviceId, array $data): void
+    {
+        $this->ensureSchema();
+
+        $allowed = [
+            'midgard_pending_password',
+            'midgard_welcome_template',
+            'midgard_password_email_sent_at',
+        ];
+
+        $patch = [];
+        foreach ($allowed as $key) {
+            if (array_key_exists($key, $data)) {
+                $patch[$key] = (string) $data[$key];
+            }
+        }
+
+        if ($patch === []) {
+            return;
+        }
+
+        $exists = Capsule::table(self::META_TABLE)->where('service_id', $serviceId)->exists();
+        if (! $exists) {
+            // Seed the row with defaults first (upsert() does not write the
+            // blob column), then fall through to the targeted update.
+            $this->upsert($serviceId, $this->defaultMeta());
+        }
+
+        $patch['updated_at'] = date('Y-m-d H:i:s');
+        Capsule::table(self::META_TABLE)->where('service_id', $serviceId)->update($patch);
     }
 
     public function claimPasswordDispatch(int $serviceId, string $serverUuid): ?string
@@ -157,9 +200,7 @@ class MetadataStore implements PasswordDispatchStore
             ->where('dispatch_hash', $dispatchHash)
             ->update(['sent_at' => $now]);
 
-        $meta = $this->get($serviceId);
-        $meta['midgard_password_email_sent_at'] = $now;
-        $this->upsert($serviceId, $meta);
+        $this->patchMeta($serviceId, ['midgard_password_email_sent_at' => $now]);
     }
 
     public function releasePasswordDispatch(string $dispatchHash): void

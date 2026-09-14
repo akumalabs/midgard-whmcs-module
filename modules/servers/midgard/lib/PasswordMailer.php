@@ -32,12 +32,16 @@ final class PasswordMailer
         try {
             $templateName = Config::option($params, 'welcome_email_template', 'Midgard Provisioning Credentials');
 
-            $meta = $store->get($serviceId);
-            $meta['midgard_pending_password'] = self::seal($password);
-            if (trim((string) ($meta['midgard_welcome_template'] ?? '')) !== $templateName) {
-                $meta['midgard_welcome_template'] = $templateName;
+            // Targeted patch, NOT a full-meta upsert: a concurrent
+            // SyncService::syncFromPanel() built from a pre-seal get() would
+            // otherwise wipe the just-sealed blob (this store overwrites the
+            // whole row on upsert).
+            $patch = ['midgard_pending_password' => self::seal($password)];
+            $currentTemplate = trim((string) ($store->get($serviceId)['midgard_welcome_template'] ?? ''));
+            if ($currentTemplate !== $templateName) {
+                $patch['midgard_welcome_template'] = $templateName;
             }
-            $store->upsert($serviceId, $meta);
+            $store->patchMeta($serviceId, $patch);
 
             $store->queuePasswordDispatch($dispatchHash);
 
@@ -283,10 +287,10 @@ final class PasswordMailer
 
     private static function clearSealedPassword(MetadataStore $store, int $serviceId): void
     {
-        $meta = $store->get($serviceId);
-        if (($meta['midgard_pending_password'] ?? '') !== '') {
-            $meta['midgard_pending_password'] = '';
-            $store->upsert($serviceId, $meta);
+        // Targeted clear — see MetadataStore::patchMeta() for why a full
+        // upsert here would race with concurrent sync writes.
+        if (trim((string) ($store->get($serviceId)['midgard_pending_password'] ?? '')) !== '') {
+            $store->patchMeta($serviceId, ['midgard_pending_password' => '']);
         }
     }
 }
