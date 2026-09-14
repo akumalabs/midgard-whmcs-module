@@ -4,6 +4,7 @@ namespace MidgardWhmcs\Tests\Unit;
 
 use Illuminate\Database\Capsule\Manager as Capsule;
 use MidgardWhmcs\MetadataStore;
+use MidgardWhmcs\PasswordMailer;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -82,5 +83,45 @@ class MetadataStoreDispatchTest extends TestCase
         $row = (array) Capsule::table('mod_midgard_email_dispatch')->where('dispatch_hash', $hash1)->first();
         $this->assertNotNull($row['queued_at'], 'worker-owned queued state is preserved');
         $this->assertNull($row['sent_at']);
+    }
+
+    public function test_sealed_password_survives_read_modify_write(): void
+    {
+        // Regression for the 2026-09-14 incident: queue() sealed the password
+        // into $meta but upsert() had no midgard_pending_password column in its
+        // payload, so the blob was silently dropped and the cron worker found
+        // nothing to unseal (attempts burned, last_error never set).
+        $this->store->upsert(21, [
+            'midgard_server_id' => '42',
+            'midgard_pending_password' => 'plain:U2VjcmV0UGFzcw==',
+        ]);
+
+        $meta = $this->store->get(21);
+        $this->assertSame('plain:U2VjcmV0UGFzcw==', $meta['midgard_pending_password']);
+
+        // A later full-meta rewrite (sync path) must preserve the blob.
+        $meta['midgard_server_id'] = '43';
+        $this->store->upsert(21, $meta);
+        $this->assertSame('plain:U2VjcmV0UGFzcw==', $this->store->get(21)['midgard_pending_password']);
+    }
+
+    public function test_queue_persists_sealed_password_for_cron_worker(): void
+    {
+        $params = ['serviceid' => 22, 'userid' => 5];
+
+        PasswordMailer::queue($params, $this->store, 'uuid-22', 'Str0ng!Passw0rd!');
+
+        $blob = (string) $this->store->get(22)['midgard_pending_password'];
+        $this->assertNotSame('', $blob, 'sealed password must persist past queue()');
+        $this->assertTrue(
+            str_starts_with($blob, 'enc:') || str_starts_with($blob, 'plain:'),
+            "unexpected seal format: {$blob}"
+        );
+
+        $pending = Capsule::table('mod_midgard_email_dispatch')
+            ->where('service_id', 22)
+            ->whereNotNull('queued_at')
+            ->count();
+        $this->assertSame(1, $pending);
     }
 }

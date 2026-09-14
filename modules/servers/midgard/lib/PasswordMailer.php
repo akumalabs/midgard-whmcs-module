@@ -79,6 +79,14 @@ final class PasswordMailer
     ): void {
         $serviceId = (int) ($params['serviceid'] ?? 0);
         if ($serviceId <= 0 || trim($serverUuid) === '') {
+            // Async path: the dispatch row guarantees a server_uuid existed at
+            // queue time — an empty one here means the module tables are
+            // corrupt. Fail loudly so the cron worker records last_error
+            // instead of silently burning the attempt counter.
+            if ($dispatchHash !== null) {
+                throw new \RuntimeException("Dispatch {$dispatchHash} has no server_uuid; cannot resolve service context.");
+            }
+
             return;
         }
 
@@ -98,9 +106,15 @@ final class PasswordMailer
                 $meta = $store->get($serviceId);
                 $password = self::unseal((string) ($meta['midgard_pending_password'] ?? ''));
                 if ($password === null || trim($password) === '') {
-                    // Nothing sealed (e.g. row orphaned) — leave the dispatch
-                    // row untouched so the attempt counter keeps it honest.
-                    return;
+                    // Nothing sealed (queue() failed to persist, or the blob is
+                    // corrupt). Throwing records last_error on the dispatch row
+                    // and keeps it queued for a manual re-arm — a silent return
+                    // here used to burn all 5 attempts with no trace (prod
+                    // incident 2026-09-14: upsert() dropped the sealed blob
+                    // because the column was missing from the schema).
+                    throw new \RuntimeException(
+                        "Sealed credentials missing for service {$serviceId} (dispatch {$dispatchHash}); email not sent."
+                    );
                 }
             }
 

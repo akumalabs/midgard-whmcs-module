@@ -37,6 +37,7 @@ class MetadataStore implements PasswordDispatchStore
             'midgard_last_error' => (string) ($row->midgard_last_error ?? ''),
             'midgard_welcome_template' => (string) ($row->midgard_welcome_template ?? ''),
             'midgard_password_email_sent_at' => (string) ($row->midgard_password_email_sent_at ?? ''),
+            'midgard_pending_password' => (string) ($row->midgard_pending_password ?? ''),
             'midgard_addresses' => $this->decodeAddresses((string) ($row->midgard_addresses ?? '')),
             'midgard_primary_ipv4' => (string) ($row->midgard_primary_ipv4 ?? ''),
             'midgard_primary_ipv6' => (string) ($row->midgard_primary_ipv6 ?? ''),
@@ -65,6 +66,7 @@ class MetadataStore implements PasswordDispatchStore
             'midgard_last_error' => (string) ($data['midgard_last_error'] ?? ''),
             'midgard_welcome_template' => (string) ($data['midgard_welcome_template'] ?? ''),
             'midgard_password_email_sent_at' => (string) ($data['midgard_password_email_sent_at'] ?? ''),
+            'midgard_pending_password' => (string) ($data['midgard_pending_password'] ?? ''),
             'midgard_addresses' => $this->encodeAddresses($data['midgard_addresses'] ?? []),
             'midgard_primary_ipv4' => (string) ($data['midgard_primary_ipv4'] ?? ''),
             'midgard_primary_ipv6' => (string) ($data['midgard_primary_ipv6'] ?? ''),
@@ -329,6 +331,7 @@ class MetadataStore implements PasswordDispatchStore
                 $table->string('midgard_welcome_template', 191)->nullable();
                 $table->string('midgard_password_email_sent_at', 32)->nullable();
                 $table->text('midgard_addresses')->nullable();
+                $table->text('midgard_pending_password')->nullable();
                 $table->string('midgard_primary_ipv4', 64)->nullable();
                 $table->string('midgard_primary_ipv6', 128)->nullable();
                 $table->bigInteger('midgard_live_cpu')->nullable();
@@ -431,6 +434,9 @@ class MetadataStore implements PasswordDispatchStore
     private function ensureMetaColumns($schema): void
     {
         $metaColumns = [
+            'midgard_pending_password' => static function ($table): void {
+                $table->text('midgard_pending_password')->nullable();
+            },
             'midgard_addresses' => static function ($table): void {
                 $table->text('midgard_addresses')->nullable();
             },

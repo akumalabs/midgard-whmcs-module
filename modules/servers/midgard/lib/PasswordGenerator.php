@@ -8,7 +8,10 @@ final class PasswordGenerator
 {
     private const LENGTH = 16;
     private const SYMBOLS = '!@#$%^&*()_+-=';
-    private const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789' . self::SYMBOLS;
+    private const UPPER = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    private const LOWER = 'abcdefghijkmnopqrstuvwxyz';
+    private const DIGITS = '23456789';
+    private const ALPHABET = self::UPPER . self::LOWER . self::DIGITS . self::SYMBOLS;
 
     public static function generate(): string
     {
@@ -34,9 +37,13 @@ final class PasswordGenerator
         // position that carried an earlier guaranteed class. Replacements
         // never touch position 0 (kept alphanumeric, see above).
         $guards = [
-            '/\d/' => fn () => (string) random_int(0, 9),
-            '/[A-Z]/' => fn () => chr(random_int(65, 90)),
-            '/[a-z]/' => fn () => chr(random_int(97, 122)),
+            // Guards draw ONLY from the same ambiguity-free classes as
+            // ALPHABET above — a plain random_int(0, 9) here used to inject
+            // '0'/'1' (and chr() loops could inject 'I'/'O'/'l'), leaking
+            // ambiguous characters the alphabet deliberately excludes.
+            '/\d/' => fn () => self::DIGITS[random_int(0, strlen(self::DIGITS) - 1)],
+            '/[A-Z]/' => fn () => self::UPPER[random_int(0, strlen(self::UPPER) - 1)],
+            '/[a-z]/' => fn () => self::LOWER[random_int(0, strlen(self::LOWER) - 1)],
             '/[!@#$%^&*()_+\-=]/' => fn () => self::ALPHABET[random_int(57, $max)],
         ];
 

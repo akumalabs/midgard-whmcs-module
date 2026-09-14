@@ -354,9 +354,15 @@ namespace MidgardWhmcs\Tests\Unit {
             ));
         }
 
-        public function test_async_send_without_sealed_password_is_silent_noop(): void
+        public function test_async_send_without_sealed_password_fails_loudly(): void
         {
             $store = new FakeMetadataStore(); // no midgard_pending_password
+
+            // Contract change (prod incident 2026-09-14): the cron worker must
+            // SEE the failure — a silent return here used to burn all 5
+            // attempts with last_error never recorded.
+            $this->expectException(\RuntimeException::class);
+            $this->expectExceptionMessage('Sealed credentials missing');
 
             PasswordMailer::sendOneTime(
                 ['serviceid' => 77, 'userid' => 88],
@@ -365,10 +371,6 @@ namespace MidgardWhmcs\Tests\Unit {
                 null,
                 'dispatch-hash'
             );
-
-            $this->assertCount(0, PasswordMailerLocalApiSpy::$calls);
-            $this->assertCount(0, $store->finalized);
-            $this->assertCount(0, $store->released);
         }
 
         public function test_queue_then_async_send_roundtrip_delivers_same_password(): void

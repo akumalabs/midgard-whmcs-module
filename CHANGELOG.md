@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Fix: one-time credentials email never sent (queue silently lost the password).** `MetadataStore::upsert()` had no `midgard_pending_password` column in its schema, in `get()`, or in its write payload — so `PasswordMailer::queue()` sealed the password into the meta array and the blob was silently dropped on write. The cron worker then found nothing to unseal, returned silently, and burned all 5 queue attempts with `last_error` never recorded (prod incident 2026-09-14, services 155/156/157). The column now exists end-to-end (create + additive migration + get + upsert) and regression tests prove the sealed blob survives read-modify-write cycles. Both silent-return paths in `sendOneTime()` (async, dispatch-hash owned) now throw so failures are visible in `last_error` + WHMCS Module Logs.
+- **Fix: password generator could leak ambiguous characters.** The class-guarantee guards drew digits via `random_int(0,9)` (can inject `0`/`1`) and letters via `chr()` (can inject `I`/`O`/`l`) — bypassing the ambiguity-free alphabet that deliberately excludes them. Guards now draw from the same ambiguity-free classes.
+
 - **Fix: credentials email could be silently stranded forever.** `claimPasswordDispatch()` returned null on a duplicate dispatch key — if a claim row survived from an interrupted attempt (e.g. a 504'd create), every later `queue()` call aborted without sealing the password or marking the row queued, so the cron worker skipped it indefinitely. Duplicate claims now recycle the row: previously-sent rows re-arm for a new email, stuck (claimed-never-queued) rows re-arm with attempts/errors reset, and already-queued unsent rows keep worker state. Covered by real-sqlite lifecycle tests.
 - Diagnostic log entry `passwordEmailQueued` written when a dispatch is queued (visible in WHMCS Module Logs).
 
