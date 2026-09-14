@@ -9,6 +9,41 @@ use Illuminate\Database\Capsule\Manager as Capsule;
 final class SyncService
 {
     /**
+     * Credentials-email gate: resolve the server's LIVE provision state
+     * from the panel and decide whether the welcome email may go out.
+     * Called by the AfterCronJob flush worker before every send attempt.
+     *
+     * @param array<string, mixed> $params
+     * @return array{send: bool, reason: string}
+     */
+    public static function credentialsEmailGate(array $params, MetadataStore $store): array
+    {
+        $serviceId = (int) ($params['serviceid'] ?? 0);
+        $meta = $store->get($serviceId);
+
+        $serverId = (int) ($meta['midgard_server_id'] ?? 0);
+        if ($serverId <= 0) {
+            return ['send' => false, 'reason' => 'provision_state_unknown'];
+        }
+
+        try {
+            $client = new ApiClient(Config::panelBaseUrl($params), Config::apiToken($params));
+            $serverResponse = $client->getServer($serverId);
+        } catch (\Throwable $e) {
+            return ['send' => false, 'reason' => 'panel_unreachable: ' . $e->getMessage()];
+        }
+
+        $serverData = is_array($serverResponse['data'] ?? null) ? $serverResponse['data'] : [];
+        $mapped = ProvisionStateMapper::fromServerStatus($serverData);
+
+        if ($mapped['state'] === 'failed') {
+            return ['send' => false, 'reason' => 'provision_failed'];
+        }
+
+        return ProvisionGate::evaluate($mapped['state']);
+    }
+
+    /**
      * @param array<string, mixed> $params
      * @return array<string, mixed>
      */

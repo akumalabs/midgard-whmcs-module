@@ -27,6 +27,7 @@ require_once __DIR__ . '/lib/PasswordDispatchStore.php';
 require_once __DIR__ . '/lib/MetadataStore.php';
 require_once __DIR__ . '/lib/PasswordMailer.php';
 require_once __DIR__ . '/lib/PasswordGenerator.php';
+require_once __DIR__ . '/lib/ProvisionGate.php';
 require_once __DIR__ . '/lib/ProvisionStateMapper.php';
 require_once __DIR__ . '/lib/ProvisioningNetworkService.php';
 require_once __DIR__ . '/lib/SsoHelper.php';

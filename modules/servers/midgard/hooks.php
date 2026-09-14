@@ -114,6 +114,54 @@ function midgard_cronFlushQueuedPasswordEmails(): void
             'userid' => $whmcsUserid,
         ];
 
+        // Credentials-email gate (mirrors VirtFusion mail-after-build):
+        // resolve the server's live provision state first; only a server
+        // that reached 'ready' may mail. Anything else defers to the next
+        // cron tick WITHOUT burning a queue attempt.
+        try {
+            $gateRow = Capsule::table('tblhosting')
+                ->leftJoin('tblservers', 'tblservers.id', '=', 'tblhosting.server')
+                ->where('tblhosting.id', $serviceId)
+                ->select([
+                    'tblservers.hostname as serverhostname',
+                    'tblservers.accesshash as serveraccesshash',
+                    'tblservers.password as serverpassword',
+                ])
+                ->first();
+        } catch (\Throwable $e) {
+            $gateRow = null;
+        }
+
+        if ($gateRow === null || trim((string) ($gateRow->serverhostname ?? '')) === '') {
+            $store->recordPasswordDispatchError($dispatchHash, 'waiting: panel server not configured');
+            continue;
+        }
+
+        $gateParams = array_merge($params, [
+            'serverhostname' => (string) ($gateRow->serverhostname ?? ''),
+            'serveraccesshash' => (string) ($gateRow->serveraccesshash ?? ''),
+            'serverpassword' => (string) ($gateRow->serverpassword ?? ''),
+        ]);
+
+        try {
+            $gate = SyncService::credentialsEmailGate($gateParams, $store);
+        } catch (\Throwable $e) {
+            $gate = ['send' => false, 'reason' => 'gate_error: ' . $e->getMessage()];
+        }
+
+        if (! $gate['send']) {
+            $store->recordPasswordDispatchError($dispatchHash, 'waiting: ' . $gate['reason']);
+            logModuleCall(
+                'midgard',
+                'cronPasswordEmailFlush',
+                ['serviceid' => $serviceId],
+                'deferred: ' . $gate['reason'],
+                null,
+                []
+            );
+            continue;
+        }
+
         try {
             $store->incrementPasswordDispatchAttempts($dispatchHash);
             PasswordMailer::sendOneTime($params, $store, (string) ($dispatch['server_uuid'] ?? ''), null, $dispatchHash);
