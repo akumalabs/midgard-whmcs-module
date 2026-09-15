@@ -13,6 +13,7 @@ class MetadataStore implements PasswordDispatchStore
     private const META_TABLE = 'mod_midgard_service_meta';
     private const EMAIL_TABLE = 'mod_midgard_email_dispatch';
     private const PROVISION_LOCK_TABLE = 'mod_midgard_provision_lock';
+    private const INSTALL_SETTINGS_TABLE = 'mod_midgard_install_settings';
 
     /**
      * @return array<string, mixed>
@@ -278,6 +279,49 @@ class MetadataStore implements PasswordDispatchStore
     }
 
     /**
+     * Install-wide key/value settings (table mod_midgard_install_settings,
+     * key PK). Used for install-scoped state that is not tied to any single
+     * service — e.g. the callback registrar's "webhook registered" flag and
+     * its HMAC secret.
+     */
+    public function getInstallSetting(string $key): ?string
+    {
+        $this->ensureSchema();
+
+        $row = Capsule::table(self::INSTALL_SETTINGS_TABLE)
+            ->where('key', $key)
+            ->first();
+
+        if ($row === null) {
+            return null;
+        }
+
+        $value = (string) ($row->value ?? '');
+        return $value === '' ? null : $value;
+    }
+
+    public function setInstallSetting(string $key, string $value): void
+    {
+        $this->ensureSchema();
+
+        $now = date('Y-m-d H:i:s');
+        $exists = Capsule::table(self::INSTALL_SETTINGS_TABLE)->where('key', $key)->exists();
+        if ($exists) {
+            Capsule::table(self::INSTALL_SETTINGS_TABLE)
+                ->where('key', $key)
+                ->update(['value' => $value, 'updated_at' => $now]);
+            return;
+        }
+
+        Capsule::table(self::INSTALL_SETTINGS_TABLE)->insert([
+            'key' => $key,
+            'value' => $value,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+    }
+
+    /**
      * True when a dispatch row exists for this service that was claimed but
      * never sent — used by the async worker to re-attach the stored password.
      */
@@ -422,6 +466,15 @@ class MetadataStore implements PasswordDispatchStore
         } elseif (! $schema->hasColumn(self::PROVISION_LOCK_TABLE, 'lock_token')) {
             $schema->table(self::PROVISION_LOCK_TABLE, static function ($table): void {
                 $table->string('lock_token', 64)->nullable();
+            });
+        }
+
+        if (! $schema->hasTable(self::INSTALL_SETTINGS_TABLE)) {
+            $schema->create(self::INSTALL_SETTINGS_TABLE, function ($table): void {
+                $table->string('key', 191)->primary();
+                $table->text('value')->nullable();
+                $table->dateTime('created_at')->nullable();
+                $table->dateTime('updated_at')->nullable();
             });
         }
 

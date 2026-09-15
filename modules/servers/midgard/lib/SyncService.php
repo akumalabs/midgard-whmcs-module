@@ -27,7 +27,7 @@ final class SyncService
         }
 
         try {
-            $client = new ApiClient(Config::panelBaseUrl($params), Config::apiToken($params));
+            $client = new ApiClient(Config::panelBaseUrl($params), Config::apiToken($params), Config::basePath($params));
             $serverResponse = $client->getServer($serverId);
         } catch (\Throwable $e) {
             return ['send' => false, 'reason' => 'panel_unreachable: ' . $e->getMessage()];
@@ -57,7 +57,7 @@ final class SyncService
             return $meta;
         }
 
-        $client = new ApiClient(Config::panelBaseUrl($params), Config::apiToken($params));
+        $client = new ApiClient(Config::panelBaseUrl($params), Config::apiToken($params), Config::basePath($params));
 
         $progressPayload = [];
         if ($includeProgress) {

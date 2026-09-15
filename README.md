@@ -21,6 +21,7 @@ Private WHMCS **Server Module** for provisioning and lifecycle management agains
 
 - `modules/servers/midgard/midgard.php` module entrypoint
 - `modules/servers/midgard/lib/` Midgard client + sync + helpers
+- `modules/servers/midgard/callback.php` build-completed webhook receiver (see below)
 - `modules/servers/midgard/templates/clientarea.tpl` WHMCS-native overview replacement UI
 - `modules/servers/midgard/hooks.php` cron sync hook
 - `tests/` mapper/idempotency unit tests
@@ -35,7 +36,11 @@ Private WHMCS **Server Module** for provisioning and lifecycle management agains
    - Create/choose a server and set:
      - `Hostname`: Midgard panel base host (or full URL)
      - `Access Hash`: Midgard API bearer token
-   - Assign module `midgard` to target product.
+       - Admin token (default): plain token → all requests go to `/api/v1/admin`.
+       - Reseller mode: prefix the token with the literal `reseller|`
+         (`reseller|<token>`) → token is the remainder and every request
+         goes to the scoped `/api/v1/reseller` surface instead.
+     - Assign module `midgard` to target product.
 
 ## Product Module Settings
 
@@ -87,6 +92,27 @@ The module sends this var once via `SendEmail` API. A dispatch idempotency key (
 - refresh install state (`installing|ready|failed`)
 - sync panel rename (`name`/`hostname`) into WHMCS service identity fields
 - keep operational error detail up to date
+- flush queued one-time password emails (delivery safety net — see below)
+
+## Build-Completed Webhook (Callback)
+
+`TestConnection` and `CreateAccount` register this WHMCS install with the
+panel (`POST /webhook-registration {url, secret}`, idempotent — the 64-hex
+secret and the "registered" flag live in `mod_midgard_install_settings`).
+Once registered, the panel pushes `server.build.completed` to
+`modules/servers/midgard/callback.php`:
+
+- `X-Midgard-Signature: sha256=hmac_sha256(timestamp . "." . rawBody, secret)`,
+  verified with `hash_equals` and a ±300s timestamp window (401 otherwise).
+- `data.server_id` maps to module meta `midgard_server_id` (a shared panel
+  server may back several services — all candidates are processed).
+- The same live gate as the cron flush worker (`SyncService::credentialsEmailGate`)
+  must report the server `ready` before the email goes out, through the same
+  `PasswordMailer::sendOneTime` async path.
+- Responses are always JSON: `200 {status: sent|already_sent|not_ready|no_service}`;
+  401 only for bad signature/stale timestamp, 500 for internal errors.
+- The `AfterCronJob` flush worker stays fully operational as the delivery
+  safety net — the webhook only makes delivery faster.
 
 ## Tag + Release
 

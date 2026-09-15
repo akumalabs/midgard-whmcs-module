@@ -110,6 +110,15 @@ function midgard_TestConnection(array $params): array
         $client = midgard_client($params);
         $client->testConnection();
 
+        // Idempotent webhook registration: make sure the panel knows where
+        // to push build-completed callbacks. Failures are logged only — a
+        // broken registration must never mark the connection itself broken.
+        try {
+            midgard_registerCallbackWebhook($params);
+        } catch (\Throwable $e) {
+            logModuleCall('midgard', 'testConnection.callbackRegistrationFailed', [], $e->getMessage(), null, []);
+        }
+
         // Auto-refresh the catalog cache so dropdowns are populated.
         try {
             \MidgardWhmcs\CatalogCache::refresh($client);
@@ -124,6 +133,32 @@ function midgard_TestConnection(array $params): array
             'success' => false,
             'error' => $e->getMessage(),
         ];
+    }
+}
+
+/**
+ * Idempotent webhook-callback registration for this install (f2-c2 contract).
+ * Called from TestConnection and the start of CreateAccount. Failures are
+ * logged and swallowed — registration must NEVER block provisioning; the
+ * AfterCronJob flush worker stays as the delivery safety net either way.
+ *
+ * @param array<string, mixed> $params
+ */
+function midgard_registerCallbackWebhook(array $params): void
+{
+    if (! class_exists(\MidgardWhmcs\CallbackRegistrar::class, false)) {
+        require_once __DIR__ . '/lib/CallbackRegistrar.php';
+    }
+
+    try {
+        $result = (new \MidgardWhmcs\CallbackRegistrar())
+            ->register($params, midgard_store());
+
+        if ($result['status'] === 'registered') {
+            logModuleCall('midgard', 'callbackWebhookRegistered', [], $result['url'], null, []);
+        }
+    } catch (\Throwable $e) {
+        logModuleCall('midgard', 'callbackWebhookRegistrationFailed', [], $e->getMessage(), null, []);
     }
 }
 
@@ -169,6 +204,11 @@ function midgard_CreateAccount(array $params)
             $store->heartbeatProvisioning($serviceId, $lockToken);
         }
         };
+
+        // Idempotent webhook registration (logged-only on failure): make the
+        // panel push build-completed callbacks instead of waiting for the
+        // cron flush worker. Must not gate provisioning — see contract C2.
+        midgard_registerCallbackWebhook($params);
 
         $criticalIds = Config::validateCriticalProvisioningIds($params);
         $locationId = (int) $criticalIds['location_id'];
@@ -1196,9 +1236,13 @@ function midgard_RefreshFromPanel(array $params)
 
 function midgard_client(array $params): ApiClient
 {
+    // Mode-aware: "reseller|<token>" in the Access Hash selects the
+    // /api/v1/reseller base path with the scoped token; a plain token keeps
+    // the legacy /api/v1/admin behaviour byte-for-byte.
     return new ApiClient(
         Config::panelBaseUrl($params),
-        Config::apiToken($params)
+        Config::apiToken($params),
+        Config::basePath($params)
     );
 }
 

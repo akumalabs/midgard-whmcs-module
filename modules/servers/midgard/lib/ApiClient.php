@@ -37,16 +37,25 @@ final class MidgardApiException extends \RuntimeException
 
 final class ApiClient
 {
+    public const DEFAULT_BASE_PATH = '/api/v1/admin';
+
     private string $baseUrl;
     private string $token;
+    private string $basePath;
 
     /** @var \CurlHandle|resource|null */
     private $curlHandle = null;
 
-    public function __construct(string $baseUrl, string $token)
+    /**
+     * @param string $basePath API base path prefix for every request.
+     *        Default "/api/v1/admin" keeps legacy behaviour byte-for-byte;
+     *        reseller connections pass "/api/v1/reseller".
+     */
+    public function __construct(string $baseUrl, string $token, string $basePath = self::DEFAULT_BASE_PATH)
     {
         $this->baseUrl = rtrim($baseUrl, '/');
         $this->token = $token;
+        $this->basePath = rtrim($basePath, '/');
     }
 
     public function __destruct()
@@ -62,7 +71,24 @@ final class ApiClient
      */
     public function testConnection(): array
     {
-        return $this->get('/api/v1/admin/servers/random-name');
+        return $this->get($this->basePath . '/servers/random-name');
+    }
+
+    /**
+     * Register this install's callback URL + HMAC secret with the panel so
+     * build-completed webhooks get delivered (POST /webhook-registration,
+     * available under both the admin and the reseller base path). The
+     * panel upserts per API token; call-site idempotency lives in
+     * CallbackRegistrar.
+     *
+     * @return array<string, mixed>
+     */
+    public function registerWebhook(string $url, string $secret): array
+    {
+        return $this->post($this->basePath . '/webhook-registration', [
+            'url' => $url,
+            'secret' => $secret,
+        ]);
     }
 
     /**
@@ -70,7 +96,7 @@ final class ApiClient
      */
     public function findUserByEmail(string $email): ?array
     {
-        $response = $this->get('/api/v1/admin/users?email=' . rawurlencode($email));
+        $response = $this->get($this->basePath . '/users?email=' . rawurlencode($email));
         $users = $response['data'] ?? [];
         if (! is_array($users) || count($users) === 0) {
             return null;
@@ -86,7 +112,7 @@ final class ApiClient
      */
     public function createUser(array $payload): array
     {
-        return $this->post('/api/v1/admin/users', $payload);
+        return $this->post($this->basePath . '/users', $payload);
     }
 
     /**
@@ -95,7 +121,7 @@ final class ApiClient
      */
     public function preflight(array $payload): array
     {
-        return $this->post('/api/v1/admin/servers/preflight', $payload);
+        return $this->post($this->basePath . '/servers/preflight', $payload);
     }
 
     /**
@@ -103,7 +129,7 @@ final class ApiClient
      */
     public function getLocation(int $locationId): array
     {
-        return $this->get('/api/v1/admin/locations/' . $locationId);
+        return $this->get($this->basePath . '/locations/' . $locationId);
     }
 
     /**
@@ -113,7 +139,7 @@ final class ApiClient
      */
     public function getLocations(): array
     {
-        return $this->get('/api/v1/admin/locations');
+        return $this->get($this->basePath . '/locations');
     }
 
     /**
@@ -123,7 +149,7 @@ final class ApiClient
      */
     public function getOsImages(): array
     {
-        return $this->get('/api/v1/admin/os-images');
+        return $this->get($this->basePath . '/os-images');
     }
 
     /**
@@ -131,7 +157,7 @@ final class ApiClient
      */
     public function randomName(): array
     {
-        return $this->get('/api/v1/admin/servers/random-name');
+        return $this->get($this->basePath . '/servers/random-name');
     }
 
     /**
@@ -140,7 +166,7 @@ final class ApiClient
      */
     public function createServer(array $payload): array
     {
-        return $this->post('/api/v1/admin/servers', $payload);
+        return $this->post($this->basePath . '/servers', $payload);
     }
 
     /**
@@ -148,7 +174,7 @@ final class ApiClient
      */
     public function getServer(int $serverId): array
     {
-        return $this->get('/api/v1/admin/servers/' . $serverId);
+        return $this->get($this->basePath . '/servers/' . $serverId);
     }
 
     /**
@@ -164,7 +190,7 @@ final class ApiClient
             $query['per_page'] = $perPage;
         }
 
-        $path = '/api/v1/admin/servers/' . $serverId . '/network/available-ips';
+        $path = $this->basePath . '/servers/' . $serverId . '/network/available-ips';
         if (!empty($query)) {
             $path .= '?' . http_build_query($query);
         }
@@ -183,7 +209,7 @@ final class ApiClient
      */
     public function availableNodeAddresses(int $nodeId): array
     {
-        return $this->get('/api/v1/admin/nodes/' . $nodeId . '/addresses/available?per_page=200');
+        return $this->get($this->basePath . '/nodes/' . $nodeId . '/addresses/available?per_page=200');
     }
 
     /**
@@ -191,7 +217,7 @@ final class ApiClient
      */
     public function assignIP(int $serverId, int $addressId): array
     {
-        return $this->post('/api/v1/admin/servers/' . $serverId . '/network/assign-ip', [
+        return $this->post($this->basePath . '/servers/' . $serverId . '/network/assign-ip', [
             'address_id' => $addressId,
         ]);
     }
@@ -201,7 +227,7 @@ final class ApiClient
      */
     public function setPrimaryIP(int $serverId, int $addressId): array
     {
-        return $this->post('/api/v1/admin/servers/' . $serverId . '/network/addresses/' . $addressId . '/set-primary', []);
+        return $this->post($this->basePath . '/servers/' . $serverId . '/network/addresses/' . $addressId . '/set-primary', []);
     }
 
     /**
@@ -214,7 +240,7 @@ final class ApiClient
      */
     public function normalizePrimaryIp(int $serverId): array
     {
-        return $this->post('/api/v1/admin/servers/' . $serverId . '/normalize-primary-ip', []);
+        return $this->post($this->basePath . '/servers/' . $serverId . '/normalize-primary-ip', []);
     }
 
     /**
@@ -222,7 +248,7 @@ final class ApiClient
      */
     public function installProgress(int $serverId): array
     {
-        return $this->get('/api/v1/admin/servers/' . $serverId . '/install-progress');
+        return $this->get($this->basePath . '/servers/' . $serverId . '/install-progress');
     }
 
     /**
@@ -231,7 +257,7 @@ final class ApiClient
      */
     public function issueSsoTicket(array $payload): array
     {
-        return $this->post('/api/v1/admin/sso/tickets', $payload);
+        return $this->post($this->basePath . '/sso/tickets', $payload);
     }
 
     /**
@@ -240,7 +266,7 @@ final class ApiClient
      */
     public function updateServerResources(int $serverId, array $payload): array
     {
-        return $this->patch('/api/v1/admin/servers/' . $serverId . '/resources', $payload);
+        return $this->patch($this->basePath . '/servers/' . $serverId . '/resources', $payload);
     }
 
     /**
@@ -248,7 +274,7 @@ final class ApiClient
      */
     public function suspendServer(int $serverId): array
     {
-        return $this->post('/api/v1/admin/servers/' . $serverId . '/suspend', []);
+        return $this->post($this->basePath . '/servers/' . $serverId . '/suspend', []);
     }
 
     /**
@@ -256,7 +282,7 @@ final class ApiClient
      */
     public function unsuspendServer(int $serverId): array
     {
-        return $this->post('/api/v1/admin/servers/' . $serverId . '/unsuspend', []);
+        return $this->post($this->basePath . '/servers/' . $serverId . '/unsuspend', []);
     }
 
     /**
@@ -264,7 +290,7 @@ final class ApiClient
      */
     public function terminateServer(int $serverId): array
     {
-        return $this->delete('/api/v1/admin/servers/' . $serverId);
+        return $this->delete($this->basePath . '/servers/' . $serverId);
     }
 
     /**

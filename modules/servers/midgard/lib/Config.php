@@ -6,6 +6,15 @@ namespace MidgardWhmcs;
 
 final class Config
 {
+    public const MODE_ADMIN = 'admin';
+    public const MODE_RESELLER = 'reseller';
+
+    public const ADMIN_BASE_PATH = '/api/v1/admin';
+    public const RESELLER_BASE_PATH = '/api/v1/reseller';
+
+    /** Literal prefix in the server Access Hash field that selects reseller mode. */
+    private const RESELLER_TOKEN_PREFIX = 'reseller|';
+
     public static function panelBaseUrl(array $params): string
     {
         $raw = trim((string) ($params['serverhostname'] ?? ''));
@@ -33,18 +42,73 @@ final class Config
         return rtrim($raw, '/');
     }
 
+    /**
+     * Resolve the API token from the server Access Hash, stripping the
+     * reseller-mode prefix when present.
+     *
+     * Backward compatible 100%: an Access Hash WITHOUT the "reseller|"
+     * prefix returns the value unchanged (admin mode), exactly as before.
+     */
     public static function apiToken(array $params): string
+    {
+        $token = self::resolveRawToken($params);
+        if ($token === '') {
+            throw new \RuntimeException('Midgard API token is not configured (Server Access Hash).');
+        }
+
+        return self::stripResellerPrefix($token);
+    }
+
+    /**
+     * Connection mode derived from the server Access Hash field:
+     *   "reseller|<token>" → reseller mode (scoped token, /api/v1/reseller)
+     *   "<token>"          → admin mode (unchanged legacy behaviour)
+     */
+    public static function mode(array $params): string
+    {
+        return self::isResellerToken(self::resolveRawToken($params))
+            ? self::MODE_RESELLER
+            : self::MODE_ADMIN;
+    }
+
+    /**
+     * API base path for this connection: /api/v1/reseller in reseller
+     * mode, /api/v1/admin otherwise (legacy default).
+     */
+    public static function basePath(array $params): string
+    {
+        return self::mode($params) === self::MODE_RESELLER
+            ? self::RESELLER_BASE_PATH
+            : self::ADMIN_BASE_PATH;
+    }
+
+    private static function resolveRawToken(array $params): string
     {
         $token = trim((string) ($params['serveraccesshash'] ?? ''));
         if ($token === '') {
             $token = trim((string) ($params['serverpassword'] ?? ''));
         }
 
-        if ($token === '') {
-            throw new \RuntimeException('Midgard API token is not configured (Server Access Hash).');
+        return $token;
+    }
+
+    private static function isResellerToken(string $token): bool
+    {
+        return str_starts_with($token, self::RESELLER_TOKEN_PREFIX);
+    }
+
+    private static function stripResellerPrefix(string $token): string
+    {
+        if (! self::isResellerToken($token)) {
+            return $token;
         }
 
-        return $token;
+        $stripped = trim(substr($token, strlen(self::RESELLER_TOKEN_PREFIX)));
+        if ($stripped === '') {
+            throw new \RuntimeException('Midgard reseller API token is empty after the "reseller|" prefix.');
+        }
+
+        return $stripped;
     }
 
     public static function option(array $params, string $key, string $default = ''): string
