@@ -146,4 +146,40 @@ class MetadataStoreDispatchTest extends TestCase
         $this->assertSame('plain:QQ==', $this->store->get(32)['midgard_pending_password']);
         $this->assertSame('', $this->store->get(32)['midgard_server_id'], 'defaults fill untouched columns');
     }
+
+    public function test_clear_drops_pending_dispatch_but_keeps_sent_history(): void
+    {
+        // Pending row for a terminated service must not outlive its meta —
+        // it would defer "provision_state_unknown" forever.
+        $hashPending = $this->store->claimPasswordDispatch(41, 'uuid-41');
+        $this->assertNotSame('', $hashPending);
+
+        // Sent row is audit trail + re-arm basis: must survive clear().
+        $hashSent = $this->store->claimPasswordDispatch(42, 'uuid-42');
+        $this->store->finalizePasswordDispatch(42, $hashSent);
+
+        $this->store->clear(41);
+        $this->store->clear(42);
+
+        $pendingLeft = Capsule::table('mod_midgard_email_dispatch')
+            ->where('service_id', 41)->whereNull('sent_at')->count();
+        $sentLeft = Capsule::table('mod_midgard_email_dispatch')
+            ->where('service_id', 42)->whereNotNull('sent_at')->count();
+
+        $this->assertSame(0, $pendingLeft, 'pending dispatch must be dropped with meta');
+        $this->assertSame(1, $sentLeft, 'sent dispatch history must survive clear()');
+    }
+
+    public function test_finalize_resets_last_error(): void
+    {
+        $hash = $this->store->claimPasswordDispatch(43, 'uuid-43');
+        $this->store->recordPasswordDispatchError($hash, 'waiting: provision_state_installing');
+
+        $this->store->finalizePasswordDispatch(43, $hash);
+
+        $row = (array) Capsule::table('mod_midgard_email_dispatch')
+            ->where('dispatch_hash', $hash)->first();
+        $this->assertNotNull($row['sent_at']);
+        $this->assertNull($row['last_error'], 'a sent row must not keep a stale error');
+    }
 }

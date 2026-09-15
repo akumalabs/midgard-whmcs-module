@@ -97,6 +97,18 @@ class MetadataStore implements PasswordDispatchStore
     {
         $this->ensureSchema();
         Capsule::table(self::META_TABLE)->where('service_id', $serviceId)->delete();
+
+        // Drop any PENDING credentials-email dispatch for this service:
+        // clear() means the server mapping is gone (terminate, or the
+        // reuse-path 404 reset). A pending row without meta would defer
+        // "provision_state_unknown" forever — and mailing a terminated
+        // server's credentials would be plain wrong. SENT rows are kept:
+        // they are the audit trail AND the re-arm basis for a future
+        // re-provision of the same service.
+        Capsule::table(self::EMAIL_TABLE)
+            ->where('service_id', $serviceId)
+            ->whereNull('sent_at')
+            ->delete();
     }
 
     /**
@@ -198,7 +210,7 @@ class MetadataStore implements PasswordDispatchStore
 
         Capsule::table(self::EMAIL_TABLE)
             ->where('dispatch_hash', $dispatchHash)
-            ->update(['sent_at' => $now]);
+            ->update(['sent_at' => $now, 'last_error' => null]);
 
         $this->patchMeta($serviceId, ['midgard_password_email_sent_at' => $now]);
     }
