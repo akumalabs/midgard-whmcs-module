@@ -186,4 +186,58 @@ final class CallbackRegistrarTest extends TestCase
             CallbackRegistrar::callbackUrl(['systemurl' => 'https://whmcs.example.com/'])
         );
     }
+
+    /**
+     * Callback deliveries MUST be https: installs behind a reverse proxy
+     * (Cloudflare/nginx) 301 http→https, and the followed redirect degrades
+     * the signed POST to a GET the endpoint can never verify (observed in
+     * production 2026-09-16: http URL registered → panel push trapped in a
+     * 301 chain).
+     */
+    public function test_callback_url_forces_https(): void
+    {
+        $this->assertSame(
+            'https://whmcs.example.com/modules/servers/midgard/callback.php',
+            CallbackRegistrar::callbackUrl(['systemurl' => 'http://whmcs.example.com'])
+        );
+    }
+
+    /**
+     * The flag stores the REGISTERED URL, so a legacy install whose flag is
+     * a timestamp (or a URL that no longer matches — scheme change, domain
+     * change) is treated as stale and re-registers with the SAME secret.
+     * This is the self-healing path for the production http registration.
+     */
+    public function test_stale_registered_url_reregisters_with_same_secret(): void
+    {
+        // Simulate a legacy flag written by the old code (a timestamp).
+        $this->store->setInstallSetting(CallbackRegistrar::SETTING_SECRET, 'aabb'); // short legacy secret
+        $this->store->setInstallSetting(CallbackRegistrar::SETTING_REGISTERED, '2026-09-16 16:58:31');
+
+        $recorded = [];
+        (new CallbackRegistrar())->register($this->params(), $this->store, $this->fakeFactory($recorded));
+
+        $this->assertCount(1, $recorded);
+        // SAME secret must be reused (the panel row already knows it).
+        $this->assertSame('aabb', $recorded[0]['secret']);
+        // ...and the flag now holds the freshly registered https URL.
+        $this->assertSame(
+            'https://whmcs.example.com/modules/servers/midgard/callback.php',
+            $this->store->getInstallSetting(CallbackRegistrar::SETTING_REGISTERED)
+        );
+    }
+
+    /**
+     * Happy-path idempotency must be unchanged: same URL twice → one HTTP
+     * registration total (second call skips).
+     */
+    public function test_same_url_registered_twice_skips_second(): void
+    {
+        $recorded = [];
+        $registrar = new CallbackRegistrar();
+        $registrar->register($this->params(), $this->store, $this->fakeFactory($recorded));
+        $registrar->register($this->params(), $this->store, $this->fakeFactory($recorded));
+
+        $this->assertCount(1, $recorded);
+    }
 }

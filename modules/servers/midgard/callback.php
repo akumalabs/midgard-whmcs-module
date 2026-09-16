@@ -46,6 +46,13 @@ if (! defined('WHMCS')) {
 
 require_once __DIR__ . '/midgard.php';
 
+// Belt and suspenders: the callback classes are normally loaded by the
+// require block in midgard.php — load them here as well so this endpoint
+// can never 500 ("class not found") on a partial or stale include graph.
+require_once __DIR__ . '/lib/CallbackRegistrar.php';
+require_once __DIR__ . '/lib/CallbackRequestVerifier.php';
+require_once __DIR__ . '/lib/CallbackHandler.php';
+
 header('Content-Type: application/json');
 
 try {

@@ -60,8 +60,17 @@ final class CallbackRegistrar
             $store->setInstallSetting(self::SETTING_SECRET, $secret);
         }
 
-        if ($store->getInstallSetting(self::SETTING_REGISTERED) !== null) {
-            return ['status' => 'skipped', 'url' => $url, 'reason' => ''];
+        // The flag stores the REGISTERED URL (not a timestamp): a stored
+        // value that differs from the current callback URL means the
+        // registration is stale (e.g. legacy installs whose flag is a
+        // timestamp, or an http→https migration) and MUST be re-sent. The
+        // secret is unchanged, and the panel upserts per token, so
+        // re-registration is harmless and self-heals the panel row.
+        $registeredUrl = (string) ($store->getInstallSetting(self::SETTING_REGISTERED) ?? '');
+        if ($registeredUrl !== '') {
+            if ($registeredUrl === $url) {
+                return ['status' => 'skipped', 'url' => $url, 'reason' => ''];
+            }
         }
 
         if ($url === '') {
@@ -79,10 +88,10 @@ final class CallbackRegistrar
 
         $client->registerWebhook($url, $secret);
 
-        $store->setInstallSetting(
-            self::SETTING_REGISTERED,
-            date('Y-m-d H:i:s', $now ?? time())
-        );
+        // Flag = the exact URL that was registered (see the staleness check
+        // above). Setting it only AFTER a successful POST keeps failed
+        // registrations retriable with the SAME secret.
+        $store->setInstallSetting(self::SETTING_REGISTERED, $url);
 
         return ['status' => 'registered', 'url' => $url, 'reason' => ''];
     }
@@ -97,7 +106,25 @@ final class CallbackRegistrar
             return '';
         }
 
-        return rtrim($base, '/') . self::CALLBACK_PATH;
+        return self::forceHttps(rtrim($base, '/') . self::CALLBACK_PATH);
+    }
+
+    /**
+     * Callback deliveries MUST hit https. Several WHMCS hosts sit behind a
+     * reverse proxy (Cloudflare/nginx) that 301s http→https — Guzzle then
+     * follows the redirect and the signed POST degrades to a GET, which the
+     * callback endpoint can never verify. resolveSystemUrl() may return an
+     * http:// URL (systemurl misconfig, tblservers IP fallback, $_SERVER
+     * fallback), so the scheme is normalized here — mirroring Config's
+     * rejection of plaintext panel URLs.
+     */
+    private static function forceHttps(string $url): string
+    {
+        if (stripos($url, 'http://') === 0) {
+            return 'https://' . substr($url, 7);
+        }
+
+        return $url;
     }
 
     /**
