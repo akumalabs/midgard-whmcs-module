@@ -12,6 +12,7 @@ use MidgardWhmcs\PasswordGenerator;
 use MidgardWhmcs\ProvisioningNetworkService;
 use MidgardWhmcs\SsoHelper;
 use MidgardWhmcs\SyncService;
+use MidgardWhmcs\TokenInfoStore;
 
 if (! defined('WHMCS')) {
     die('This file cannot be accessed directly');
@@ -35,6 +36,7 @@ require_once __DIR__ . '/lib/ProvisionStateMapper.php';
 require_once __DIR__ . '/lib/ProvisioningNetworkService.php';
 require_once __DIR__ . '/lib/SsoHelper.php';
 require_once __DIR__ . '/lib/SyncService.php';
+require_once __DIR__ . '/lib/TokenInfoStore.php';
 
 function midgard_MetaData(): array
 {
@@ -112,6 +114,22 @@ function midgard_TestConnection(array $params): array
     try {
         $client = midgard_client($params);
         $client->testConnection();
+
+        // Connection bootstrap (Fase B): ask the panel which kind of token
+        // this is and cache the answer install-wide. With an unprefixed
+        // reseller token this flips every later call to /api/v1/reseller
+        // without the operator needing the "reseller|" prefix. Failures are
+        // logged only — discovery must never mark the connection broken.
+        try {
+            if (! class_exists(\MidgardWhmcs\TokenInfoStore::class, false)) {
+                require_once __DIR__ . '/lib/TokenInfoStore.php';
+            }
+            $tokenInfo = new \MidgardWhmcs\TokenInfoStore(midgard_store());
+            $tokenInfo->discover($params);
+            logModuleCall('midgard', 'testConnection.tokenInfo', [], json_encode($tokenInfo->info()), null, []);
+        } catch (\Throwable $e) {
+            logModuleCall('midgard', 'testConnection.tokenInfoFailed', [], $e->getMessage(), null, []);
+        }
 
         // Idempotent webhook registration: make sure the panel knows where
         // to push build-completed callbacks. Failures are logged only — a
@@ -1241,11 +1259,13 @@ function midgard_client(array $params): ApiClient
 {
     // Mode-aware: "reseller|<token>" in the Access Hash selects the
     // /api/v1/reseller base path with the scoped token; a plain token keeps
-    // the legacy /api/v1/admin behaviour byte-for-byte.
+    // the legacy /api/v1/admin behaviour byte-for-byte. Fase B: a plain
+    // token with a CACHED discovery answer (set by TestConnection) uses the
+    // discovered base path — unprefixed reseller tokens just work.
     return new ApiClient(
         Config::panelBaseUrl($params),
         Config::apiToken($params),
-        Config::basePath($params)
+        TokenInfoStore::resolveBasePath($params)
     );
 }
 

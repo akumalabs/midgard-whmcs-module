@@ -92,6 +92,22 @@ final class ApiClient
     }
 
     /**
+     * Capability discovery: GET /api/v1/token-info is reachable by ANY valid
+     * token (admin or reseller) and reports the token's type + API base
+     * path. Used by the connection bootstrap so a plain (unprefixed)
+     * reseller token self-selects the reseller base path.
+     *
+     * NOTE: absolute path on purpose — the endpoint lives OUTSIDE both
+     * mode-specific base paths.
+     *
+     * @return array<string, mixed>
+     */
+    public function getTokenInfo(): array
+    {
+        return $this->get('/api/v1/token-info');
+    }
+
+    /**
      * @return array<string, mixed>|null
      */
     public function findUserByEmail(string $email): ?array

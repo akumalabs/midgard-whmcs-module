@@ -204,7 +204,7 @@ final class CallbackRegistrar
         return new ApiClient(
             Config::panelBaseUrl($params),
             Config::apiToken($params),
-            Config::basePath($params)
+            TokenInfoStore::resolveBasePath($params)
         );
     }
 }
