@@ -112,14 +112,13 @@ function midgard_ConfigOptions(): array
 function midgard_TestConnection(array $params): array
 {
     try {
-        $client = midgard_client($params);
-        $client->testConnection();
-
-        // Connection bootstrap (Fase B): ask the panel which kind of token
-        // this is and cache the answer install-wide. With an unprefixed
-        // reseller token this flips every later call to /api/v1/reseller
-        // without the operator needing the "reseller|" prefix. Failures are
-        // logged only — discovery must never mark the connection broken.
+        // Connection bootstrap FIRST (Fase B): ask the panel which kind of
+        // token this is and cache the answer install-wide, BEFORE any
+        // surface-specific call. With an unprefixed reseller token the
+        // connectivity probe below must already use /api/v1/reseller —
+        // probing /admin first would 403 before discovery ever ran.
+        // Failures are logged only — discovery must never mark the
+        // connection broken.
         try {
             if (! class_exists(\MidgardWhmcs\TokenInfoStore::class, false)) {
                 require_once __DIR__ . '/lib/TokenInfoStore.php';
@@ -130,6 +129,9 @@ function midgard_TestConnection(array $params): array
         } catch (\Throwable $e) {
             logModuleCall('midgard', 'testConnection.tokenInfoFailed', [], $e->getMessage(), null, []);
         }
+
+        $client = midgard_client($params);
+        $client->testConnection();
 
         // Idempotent webhook registration: make sure the panel knows where
         // to push build-completed callbacks. Failures are logged only — a

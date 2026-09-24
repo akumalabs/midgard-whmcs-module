@@ -56,6 +56,44 @@ final class TokenInfoStore
     }
 
     /**
+     * Normalize a /api/v1/token-info payload into the cached-shape.
+     *
+     * LIVE PANEL CONTRACT (panel e0b36ae / v2026.09.16.0400):
+     *   {"type": "admin"|"reseller", "base_path": "/api/v1/…",
+     *    "dormant": bool, "user": {…}, "reseller": {…}|null}
+     *
+     * A DORMANT reseller token reports the admin path (it cannot open
+     * either surface yet), but the USEFUL error lives on the reseller
+     * surface (403 dormant_token — "flag the owner as Reseller"), so we
+     * cache the RESELLER path: later calls surface the actionable message
+     * instead of a generic admin-surface denial.
+     *
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>|null null = unexpected shape, keep cache
+     */
+    public static function normalize(array $payload): ?array
+    {
+        $type = $payload['type'] ?? null;
+        if (! is_string($type) || $type === '') {
+            return null;
+        }
+
+        $basePath = $payload['base_path'] ?? null;
+        $dormant = ($payload['dormant'] ?? false) === true;
+
+        $effective = $dormant
+            ? Config::RESELLER_BASE_PATH
+            : (is_string($basePath) && $basePath !== '' ? $basePath : null);
+
+        return [
+            'token_type' => $type,
+            'api_base_path' => $effective ?? Config::ADMIN_BASE_PATH,
+            'owner_name' => (string) (($payload['user']['name'] ?? null) ?? ''),
+            'discovered_at' => date('c'),
+        ];
+    }
+
+    /**
      * Run discovery against the panel and cache it. Network errors are
      * swallowed (return null): discovery is a convenience — a panel that
      * predates token-info simply keeps the legacy behaviour.
@@ -72,19 +110,19 @@ final class TokenInfoStore
             );
 
             $response = $client->getTokenInfo();
-            $payload = is_array($response['data'] ?? null) ? $response['data'] : $response;
+            $payload = is_array($response) ? $response : [];
 
-            if (! isset($payload['token_type']) || ! is_string($payload['token_type'])) {
+            // Tolerate an envelope {"data": {…}} as well as the bare payload.
+            if (isset($payload['data']) && is_array($payload['data'])) {
+                $payload = $payload['data'];
+            }
+
+            $normalized = self::normalize($payload);
+            if ($normalized === null) {
                 return; // Unexpected shape — keep whatever is cached.
             }
 
-            $this->info = [
-                'token_type' => (string) $payload['token_type'],
-                'api_base_path' => (string) ($payload['api_base_path'] ?? ''),
-                'owner_name' => (string) ($payload['owner_name'] ?? ''),
-                'discovered_at' => date('c'),
-            ];
-
+            $this->info = $normalized;
             $this->store->setInstallSetting(self::CACHE_KEY, (string) json_encode($this->info));
         } catch (\Throwable $e) {
             // Discovery must never break TestConnection (older panel, network

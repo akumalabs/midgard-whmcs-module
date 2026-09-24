@@ -118,4 +118,63 @@ final class TokenInfoStoreTest extends TestCase
             TokenInfoStore::resolveBasePath($this->paramsWith('plain-token'))
         );
     }
+
+    // ───────── LIVE PANEL CONTRACT (panel e0b36ae / v2026.09.16.0400) ─────
+    // The controller returns {type, base_path, dormant, user{}, reseller?}.
+
+    public function test_normalize_live_reseller_payload(): void
+    {
+        $normalized = TokenInfoStore::normalize([
+            'type' => 'reseller',
+            'base_path' => '/api/v1/reseller',
+            'dormant' => false,
+            'user' => ['id' => 7, 'name' => 'InstantRDP'],
+            'reseller' => ['vm_quota' => 50, 'vms_used' => 12],
+        ]);
+
+        $this->assertNotNull($normalized);
+        $this->assertSame('reseller', $normalized['token_type']);
+        $this->assertSame('/api/v1/reseller', $normalized['api_base_path']);
+        $this->assertSame('InstantRDP', $normalized['owner_name']);
+    }
+
+    public function test_normalize_live_admin_payload(): void
+    {
+        $normalized = TokenInfoStore::normalize([
+            'type' => 'admin',
+            'base_path' => '/api/v1/admin',
+            'dormant' => false,
+            'user' => ['id' => 1, 'name' => 'Danjo RackByte'],
+            'reseller' => null,
+        ]);
+
+        $this->assertNotNull($normalized);
+        $this->assertSame('admin', $normalized['token_type']);
+        $this->assertSame('/api/v1/admin', $normalized['api_base_path']);
+    }
+
+    public function test_normalize_dormant_reseller_caches_reseller_path(): void
+    {
+        // Dormant tokens report the admin base_path (they open nothing yet),
+        // but the actionable 403 dormant_token lives on the reseller surface
+        // — cache the reseller path so later calls explain themselves.
+        $normalized = TokenInfoStore::normalize([
+            'type' => 'reseller',
+            'base_path' => '/api/v1/admin',
+            'dormant' => true,
+            'user' => ['id' => 9, 'name' => 'Pending Reseller'],
+            'reseller' => null,
+        ]);
+
+        $this->assertNotNull($normalized);
+        $this->assertSame('reseller', $normalized['token_type']);
+        $this->assertSame('/api/v1/reseller', $normalized['api_base_path']);
+    }
+
+    public function test_normalize_rejects_unexpected_shape(): void
+    {
+        $this->assertNull(TokenInfoStore::normalize(['foo' => 'bar']));
+        $this->assertNull(TokenInfoStore::normalize([]));
+        $this->assertNull(TokenInfoStore::normalize(['type' => 42]));
+    }
 }
