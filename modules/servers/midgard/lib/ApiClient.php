@@ -267,6 +267,47 @@ final class ApiClient
         return $this->get($this->basePath . '/servers/' . $serverId . '/install-progress');
     }
 
+    /** Base path in use (admin vs reseller) — lets callers gate admin-only calls. */
+    public function basePath(): string
+    {
+        return $this->basePath;
+    }
+
+    /**
+     * Power action on a server (admin endpoint). $action ∈ start|stop|restart|shutdown|reset.
+     * Panel answers 409 + server_operation_in_progress when a lifecycle op owns the server.
+     *
+     * @return array<string, mixed>
+     */
+    public function serverPower(int $serverId, string $action): array
+    {
+        return $this->post($this->basePath . '/servers/' . $serverId . '/power', ['action' => $action]);
+    }
+
+    /**
+     * Rebuild a server (admin endpoint). Payload: os_image_id required;
+     * optional password / name / hostname / ssh_key_ids.
+     *
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    public function rebuildServer(int $serverId, array $payload): array
+    {
+        return $this->post($this->basePath . '/servers/' . $serverId . '/rebuild', $payload);
+    }
+
+    /**
+     * Issue a console (noVNC) session token (admin endpoint). Returns
+     * {type, url: wss://<panel>/vnc?token=…, token, password} — the token
+     * lives ~60s server-side; the URL is a websocket on the PANEL host.
+     *
+     * @return array<string, mixed>
+     */
+    public function serverConsole(int $serverId): array
+    {
+        return $this->get($this->basePath . '/servers/' . $serverId . '/console');
+    }
+
     /**
      * @param array<string, mixed> $payload
      * @return array<string, mixed>

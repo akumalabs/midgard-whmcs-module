@@ -10,7 +10,6 @@ use MidgardWhmcs\MidgardApiException;
 use MidgardWhmcs\PasswordMailer;
 use MidgardWhmcs\PasswordGenerator;
 use MidgardWhmcs\ProvisioningNetworkService;
-use MidgardWhmcs\SsoHelper;
 use MidgardWhmcs\SyncService;
 use MidgardWhmcs\TokenInfoStore;
 
@@ -34,7 +33,6 @@ require_once __DIR__ . '/lib/PasswordGenerator.php';
 require_once __DIR__ . '/lib/ProvisionGate.php';
 require_once __DIR__ . '/lib/ProvisionStateMapper.php';
 require_once __DIR__ . '/lib/ProvisioningNetworkService.php';
-require_once __DIR__ . '/lib/SsoHelper.php';
 require_once __DIR__ . '/lib/SyncService.php';
 require_once __DIR__ . '/lib/TokenInfoStore.php';
 
@@ -966,14 +964,107 @@ function midgard_ClientArea(array $params): array
         default      => 'default',
     };
 
-    $ssoUrl = null;
-    try {
-        if (($meta['midgard_server_uuid'] ?? '') !== '') {
-            $ssoUrl = SsoHelper::buildSsoUrl(midgard_client($params), $params, $meta);
+    // ── Client-area action plumbing (ajax proxy + direct console) ────────
+    // A per-session CSRF token (echoed as X-Midgard-CSRF by the JS) gates
+    // ajax.php/console.php. The action bar only renders for ADMIN-mode
+    // connections with a provisioned server — reseller tokens have no
+    // power/rebuild/console endpoints on the panel (Fase D scope).
+    $midgardMode = \MidgardWhmcs\Config::mode($params);
+    if (empty($_SESSION['midgard_ca_csrf'])) {
+        try {
+            $_SESSION['midgard_ca_csrf'] = bin2hex(random_bytes(20));
+        } catch (\Throwable $e) {
+            $_SESSION['midgard_ca_csrf'] = bin2hex(uniqid((string) mt_rand(), true));
         }
-    } catch (\Throwable $e) {
-        logModuleCall('midgard', 'buildSsoUrl', ['serviceid' => $serviceId], $e->getMessage(), null, []);
     }
+    $midgardCsrf = (string) $_SESSION['midgard_ca_csrf'];
+    $midgardServerId = (int) ($meta['midgard_server_id'] ?? 0);
+    $midgardActionsEnabled = ($midgardMode === \MidgardWhmcs\Config::MODE_ADMIN) && $midgardServerId > 0;
+    $midgardAjaxUrl = 'modules/servers/midgard/ajax.php?serviceid=' . $serviceId;
+    $midgardConsoleUrl = 'modules/servers/midgard/console.php?serviceid=' . $serviceId;
+
+    // Latest collector snapshot for the metric cards (persisted by
+    // SyncService::syncFromPanel from the panel `stats` block). Null when
+    // the panel has not collected yet or runs a pre-stats panel version.
+    $midgardStats = null;
+    $statsRaw = trim((string) ($meta['midgard_stats_json'] ?? ''));
+    if ($statsRaw !== '') {
+        $decodedStats = json_decode($statsRaw, true);
+        if (is_array($decodedStats)) {
+            $midgardStats = $decodedStats;
+        }
+    }
+
+    // ── Metric card formatters (panel-parity display) ────────────────────
+    $fmtUptime = static function ($seconds): string {
+        $seconds = (int) $seconds;
+        if ($seconds <= 0) {
+            return '—';
+        }
+        $d = intdiv($seconds, 86400);
+        $h = intdiv($seconds % 86400, 3600);
+        $m = intdiv($seconds % 3600, 60);
+        if ($d > 0) {
+            return $d . 'd ' . $h . 'h';
+        }
+        if ($h > 0) {
+            return $h . 'h ' . $m . 'm';
+        }
+
+        return $m . 'm';
+    };
+    $fmtNum = static function ($value): string {
+        $rounded = round((float) $value, 1);
+        if (fmod($rounded, 1.0) === 0.0) {
+            return number_format($rounded, 0);
+        }
+
+        return number_format($rounded, 1);
+    };
+    $fmtGb = static function ($bytes) use ($fmtNum): string {
+        return $fmtNum((int) $bytes / 1073741824);
+    };
+    $fmtBandwidth = static function ($bytes) use ($fmtNum): string {
+        $tb = (float) $bytes / (1024 * 1024 * 1024 * 1024);
+        if ($tb >= 1) {
+            return $fmtNum($tb) . ' TB';
+        }
+
+        return $fmtNum((int) $bytes / (1024 * 1024 * 1024)) . ' GB';
+    };
+
+    $midgardCards = [];
+    $statsCpu = isset($midgardStats['cpu_percent']) ? (float) $midgardStats['cpu_percent'] : null;
+    $statsUptime = isset($midgardStats['uptime']) ? (int) $midgardStats['uptime'] : null;
+    $statsMem = isset($midgardStats['mem']) ? (int) $midgardStats['mem'] : null;
+    $statsDisk = isset($midgardStats['disk']) ? (int) $midgardStats['disk'] : null;
+    $statsBw = isset($midgardStats['bandwidth_usage']) ? (int) $midgardStats['bandwidth_usage'] : null;
+
+    $midgardCards[] = [
+        'label' => 'Uptime',
+        'value' => $runtimeStatus === 'stopped' ? 'Stopped' : ($statsUptime !== null ? $fmtUptime($statsUptime) : '—'),
+        'sub' => '',
+    ];
+    $midgardCards[] = [
+        'label' => 'CPU',
+        'value' => $statsCpu !== null ? str_replace('.0', '', sprintf('%.1f', $statsCpu)) . '%' : '—',
+        'sub' => 'of ' . (int) ($midgardSpecs['cpu'] ?? 0) . ' Core(s)',
+    ];
+    $midgardCards[] = [
+        'label' => 'Memory',
+        'value' => ($statsMem !== null && $statsMem > 0) ? $fmtGb($statsMem) . ' / ' . (int) ($midgardSpecs['memory_gb'] ?? 0) . ' GB' : (int) ($midgardSpecs['memory_gb'] ?? 0) . ' GB',
+        'sub' => 'used / allocated',
+    ];
+    $midgardCards[] = [
+        'label' => 'Disk',
+        'value' => ($statsDisk !== null && $statsDisk > 0) ? $fmtGb($statsDisk) . ' / ' . (int) ($midgardSpecs['disk_gb'] ?? 0) . ' GB' : (int) ($midgardSpecs['disk_gb'] ?? 0) . ' GB',
+        'sub' => 'used / allocated',
+    ];
+    $midgardCards[] = [
+        'label' => 'Bandwidth',
+        'value' => ($statsBw !== null && $statsBw > 0) ? $fmtBandwidth($statsBw) : '0 GB',
+        'sub' => 'of ' . (int) ($midgardSpecs['bandwidth_tb'] ?? 0) . ' TB',
+    ];
 
     $addresses = [];
     if (is_array($meta['midgard_addresses'] ?? null)) {
@@ -1043,7 +1134,13 @@ function midgard_ClientArea(array $params): array
         'midgardRuntimeStatusLabel' => $runtimeStatusLabel,
         'midgardRuntimeStatusClass' => $runtimeStatusClass,
         'midgardProvisionError' => (string) ($meta['midgard_last_error'] ?? ''),
-        'midgardSsoUrl' => $ssoUrl,
+        'midgardMode' => $midgardMode,
+        'midgardActionsEnabled' => $midgardActionsEnabled,
+        'midgardAjaxUrl' => $midgardAjaxUrl,
+        'midgardConsoleUrl' => $midgardConsoleUrl,
+        'midgardCsrf' => $midgardCsrf,
+        'midgardServerId' => $midgardServerId,
+        'midgardStats' => $midgardStats,
         'midgardServerName' => $serverName,
         'midgardServiceHostname' => $serviceHostname,
         'midgardPrimaryIpv4' => $primaryIpv4,
@@ -1057,6 +1154,8 @@ function midgard_ClientArea(array $params): array
         'midgardAssignedIps' => $assignedIpsText,
         'midgardAssignedIpsArray' => $assignedIpsArray,
         'midgardServerSpecs' => $midgardSpecs,
+        'midgardCards' => $midgardCards,
+        'midgardOsName' => (string) ($meta['midgard_os_name'] ?? ''),
     ];
     logModuleCall('midgard', 'clientArea.responseKeys', [
         'serviceid' => $serviceId,

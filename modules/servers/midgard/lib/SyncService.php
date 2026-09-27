@@ -95,6 +95,16 @@ final class SyncService
                 $meta['midgard_live_backup_limit'] = $liveResourceSummary['backup_limit'];
                 $meta['midgard_live_snapshot_limit'] = $liveResourceSummary['snapshot_limit'];
                 $meta['midgard_runtime_status'] = self::normalizeRuntimeStatus($serverData['status'] ?? null);
+                $statsJson = self::extractStatsSnapshot($serverData);
+                if ($statsJson !== null) {
+                    $meta['midgard_stats_json'] = $statsJson;
+                }
+
+                // Current OS image name (panel payload: os_image.{id,name,distro,version}).
+                $osImage = $serverData['os_image'] ?? null;
+                if (is_array($osImage) && isset($osImage['name']) && (string) $osImage['name'] !== '') {
+                    $meta['midgard_os_name'] = (string) $osImage['name'];
+                }
 
                 if ($serverOwnerId > 0) {
                     $meta['midgard_user_id'] = (string) $serverOwnerId;
@@ -458,6 +468,44 @@ final class SyncService
             'backup_limit' => self::nullableInt($serverData['backup_limit'] ?? null),
             'snapshot_limit' => self::nullableInt($serverData['snapshot_limit'] ?? null),
         ];
+    }
+
+    /**
+     * Latest collector snapshot (panel `stats` block) as a canonical JSON
+     * string for meta persistence. Null when the panel did not include it
+     * (old panel version / no snapshot yet) so an existing stored snapshot
+     * is never wiped by a payload that simply lacks the field.
+     *
+     * @param array<string, mixed> $serverData
+     */
+    private static function extractStatsSnapshot(array $serverData): ?string
+    {
+        $stats = $serverData['stats'] ?? null;
+        if (! is_array($stats) || $stats === []) {
+            return null;
+        }
+
+        $known = ['status', 'uptime', 'cpu_percent', 'mem', 'maxmem', 'disk', 'maxdisk', 'collected_at'];
+        $clean = [];
+        foreach ($known as $key) {
+            if (array_key_exists($key, $stats)) {
+                $clean[$key] = $stats[$key];
+            }
+        }
+
+        // Month-to-date bandwidth lives at the payload root (not inside the
+        // panel `stats` block) — ride it along so the client area Bandwidth
+        // card shows real usage against the limit.
+        if (array_key_exists('bandwidth_usage', $serverData)) {
+            $clean['bandwidth_usage'] = $serverData['bandwidth_usage'];
+        }
+
+        $encoded = json_encode($clean);
+        if ($encoded === false || $encoded === '[]') {
+            return null;
+        }
+
+        return $encoded;
     }
 
     /**
