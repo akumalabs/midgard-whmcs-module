@@ -25,6 +25,8 @@
             color: var(--mg-text);
             font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
             padding: 24px;
+            /* WHMCS themes like to center this block — everything stays left-aligned. */
+            text-align: left;
         }
 
         .midgard-clientarea.midgard-ca *,
@@ -102,15 +104,15 @@
         .midgard-ca-banner.mg-show { display: block; }
 
         /* ── Definition rows ────────────────────────────────────────── */
-        .midgard-ca-rows { border-top: 1px solid var(--mg-border); display: grid; gap: 0; grid-template-columns: 1fr; margin-top: 20px; padding-top: 6px; }
-        .midgard-ca-row { align-items: baseline; border-bottom: 1px solid var(--mg-border); display: flex; gap: 12px; padding: 9px 0; }
-        .midgard-ca-label { color: var(--mg-muted); flex: 0 0 88px; font-size: 12px; font-weight: 500; letter-spacing: 0.02em; }
-        .midgard-ca-value { color: var(--mg-text); flex: 1; font-size: 13.5px; font-weight: 500; font-variant-numeric: tabular-nums; min-width: 0; word-break: break-word; }
+        .midgard-ca-rows { display: grid; gap: 0; grid-template-columns: 1fr; margin-top: 20px; }
+        .midgard-ca-row { align-items: baseline; display: flex; gap: 12px; padding: 7px 0; }
+        .midgard-ca-label { color: var(--mg-text); flex: 0 0 88px; font-size: 12.5px; font-weight: 600; letter-spacing: 0.02em; }
+        .midgard-ca-value { color: var(--mg-muted); flex: 1; font-size: 13.5px; font-weight: 500; font-variant-numeric: tabular-nums; min-width: 0; word-break: break-word; }
 
         /* ── Metric cards (single row; wraps to 2x2 on narrow screens) ── */
         .midgard-ca-cards { display: grid; gap: 12px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 20px; }
         .midgard-ca-card { background: var(--mg-subtle); border: 1px solid var(--mg-border); border-radius: 10px; padding: 14px 16px; }
-        .midgard-ca-card .mg-card-label { color: var(--mg-muted); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+        .midgard-ca-card .mg-card-label { color: var(--mg-text); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
         .midgard-ca-card .mg-card-value { color: var(--mg-text); font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; margin-top: 6px; }
         .midgard-ca-card .mg-card-sub { color: var(--mg-faint); font-size: 11.5px; margin-top: 3px; min-height: 15px; }
 
