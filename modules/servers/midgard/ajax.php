@@ -21,7 +21,10 @@ declare(strict_types=1);
  *   action=progress   install-progress passthrough (modal checklist)
  *   action=power      {action: start|stop|restart|shutdown|reset}
  *   action=rebuild    {os_image_id, password?, name?, hostname?}
- *   action=console    issues a fresh console session {url, password}
+ *   action=sso        issues a panel SSO ticket {url} for the console
+ *                     (the console itself is served by the PANEL — the
+ *                     button opens {panel}/login?sso_ticket=…; the ticket
+ *                     value is never logged)
  *
  * Log discipline: logModuleCall receives request SHAPES only; console
  * responses (websocket URL + VNC password) are never logged.
@@ -266,21 +269,41 @@ try {
 
             midgard_ajax_respond(200, ['status' => 'ok', 'message' => 'Rebuild started.']);
 
-        case 'console':
-            $console = $client->serverConsole($serverId);
-            $data = is_array($console['data'] ?? null) ? $console['data'] : [];
-            $url = (string) ($data['url'] ?? '');
-            $vncPassword = (string) ($data['password'] ?? '');
-            if ($url === '') {
-                midgard_ajax_respond(502, ['status' => 'error', 'message' => 'Panel did not return a console session.']);
+        case 'sso':
+            // Console via the panel: issue a short-lived SSO ticket bound to
+            // the mapped panel user + server uuid; the button opens
+            // {panel}/login?sso_ticket=… and the panel SPA takes it from
+            // there. The ticket value itself is never logged.
+            $panelUserId = (int) ($meta['midgard_user_id'] ?? 0);
+            $serverUuid = trim((string) ($meta['midgard_server_uuid'] ?? ''));
+            if ($panelUserId <= 0 || $serverUuid === '') {
+                midgard_ajax_respond(409, ['status' => 'error', 'message' => 'Server mapping is incomplete for SSO.']);
             }
 
-            // NEVER log the url or vnc password.
+            try {
+                $ticket = $client->issueSsoTicket([
+                    'user_id' => $panelUserId,
+                    'server_uuid' => $serverUuid,
+                    // Land straight on the panel console page for this server.
+                    'redirect' => '/servers/' . $serverUuid . '/console',
+                ]);
+            } catch (\MidgardWhmcs\MidgardApiException $e) {
+                logModuleCall('midgard', 'clientarea.sso', ['serviceid' => $serviceId], [
+                    'status_code' => $e->statusCode(),
+                ], null, []);
+                midgard_ajax_respond(502, ['status' => 'error', 'message' => 'Panel refused the SSO ticket request.']);
+            }
+
+            $ticketValue = (string) ($ticket['data']['ticket'] ?? '');
+            if ($ticketValue === '') {
+                midgard_ajax_respond(502, ['status' => 'error', 'message' => 'Panel did not return an SSO ticket.']);
+            }
+
+            $base = rtrim(\MidgardWhmcs\Config::panelBaseUrl($params), '/');
             midgard_ajax_respond(200, [
                 'status' => 'ok',
                 'data' => [
-                    'url' => $url,
-                    'password' => $vncPassword,
+                    'url' => $base . '/login?sso_ticket=' . rawurlencode($ticketValue),
                 ],
             ]);
 

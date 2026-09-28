@@ -1,7 +1,6 @@
 <div class="midgard-clientarea midgard-ca" id="midgard-ca"
      data-actions-enabled="{$midgardActionsEnabled|default:0}"
      data-ajax-url="{$midgardAjaxUrl|default:''|escape}"
-     data-console-url="{$midgardConsoleUrl|default:''|escape}"
      data-csrf="{$midgardCsrf|default:''|escape}"
      data-service-id="{$midgardServerId|default:0}"
      data-status="{$midgardRuntimeStatus|default:''|escape}">
@@ -341,7 +340,6 @@
             var cfg = {
                 actionsEnabled: root.getAttribute('data-actions-enabled') === '1',
                 ajaxUrl: root.getAttribute('data-ajax-url'),
-                consoleUrl: root.getAttribute('data-console-url'),
                 csrf: root.getAttribute('data-csrf'),
                 serviceId: root.getAttribute('data-service-id')
             };
@@ -617,10 +615,25 @@
                 refreshStatus();
             }
 
-            /* ── Console ─────────────────────────────────────────────── */
+            /* ── Console (served by the PANEL via SSO) ────────────────── */
             function openConsole() {
-                if (!cfg.consoleUrl) { return; }
-                window.open(cfg.consoleUrl, 'midgard-console', 'width=1100,height=720,menubar=no,toolbar=no');
+                if (busy) { return; }
+                busy = true;
+                hideBanner();
+                setButtons();
+                api('sso').then(function (result) {
+                    var url = (result && result.url) || '';
+                    if (url) {
+                        window.open(url, 'midgard-panel-console', 'width=1280,height=860,menubar=no,toolbar=no');
+                    } else {
+                        showBanner('error', 'Panel did not return a console address.');
+                    }
+                }).catch(function (err) {
+                    showBanner('error', err.message || 'Could not open the console.');
+                }).finally(function () {
+                    busy = false;
+                    setButtons();
+                });
             }
 
             /* ── Wire up ─────────────────────────────────────────────── */

@@ -964,11 +964,14 @@ function midgard_ClientArea(array $params): array
         default      => 'default',
     };
 
-    // ── Client-area action plumbing (ajax proxy + direct console) ────────
+    // ── Client-area action plumbing (ajax proxy + SSO console) ───────────
     // A per-session CSRF token (echoed as X-Midgard-CSRF by the JS) gates
-    // ajax.php/console.php. The action bar only renders for ADMIN-mode
-    // connections with a provisioned server — reseller tokens have no
-    // power/rebuild/console endpoints on the panel (Fase D scope).
+    // ajax.php. The action bar only renders for ADMIN-mode connections with
+    // a provisioned server — reseller tokens have no power/rebuild/sso
+    // endpoints on the panel (Fase D scope). The console itself lives on
+    // the panel: the button issues an SSO ticket and opens
+    // {panel}/login?sso_ticket=… → the panel SPA consumes it and lands on
+    // the server page (console served by the panel, never by WHMCS).
     $midgardMode = \MidgardWhmcs\Config::mode($params);
     if (empty($_SESSION['midgard_ca_csrf'])) {
         try {
@@ -981,7 +984,6 @@ function midgard_ClientArea(array $params): array
     $midgardServerId = (int) ($meta['midgard_server_id'] ?? 0);
     $midgardActionsEnabled = ($midgardMode === \MidgardWhmcs\Config::MODE_ADMIN) && $midgardServerId > 0;
     $midgardAjaxUrl = 'modules/servers/midgard/ajax.php?serviceid=' . $serviceId;
-    $midgardConsoleUrl = 'modules/servers/midgard/console.php?serviceid=' . $serviceId;
 
     // Latest collector snapshot for the metric cards (persisted by
     // SyncService::syncFromPanel from the panel `stats` block). Null when
@@ -1124,7 +1126,6 @@ function midgard_ClientArea(array $params): array
         'midgardMode' => $midgardMode,
         'midgardActionsEnabled' => $midgardActionsEnabled,
         'midgardAjaxUrl' => $midgardAjaxUrl,
-        'midgardConsoleUrl' => $midgardConsoleUrl,
         'midgardCsrf' => $midgardCsrf,
         'midgardServerId' => $midgardServerId,
         'midgardStats' => $midgardStats,
