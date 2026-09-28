@@ -3,7 +3,8 @@
      data-ajax-url="{$midgardAjaxUrl|default:''|escape}"
      data-console-url="{$midgardConsoleUrl|default:''|escape}"
      data-csrf="{$midgardCsrf|default:''|escape}"
-     data-service-id="{$midgardServerId|default:0}">
+     data-service-id="{$midgardServerId|default:0}"
+     data-status="{$midgardRuntimeStatus|default:''|escape}">
     <style>
         .midgard-clientarea.midgard-ca {
             --mg-surface: #ffffff;
@@ -107,8 +108,8 @@
         .midgard-ca-label { color: var(--mg-muted); flex: 0 0 88px; font-size: 12px; font-weight: 500; letter-spacing: 0.02em; }
         .midgard-ca-value { color: var(--mg-text); flex: 1; font-size: 13.5px; font-weight: 500; font-variant-numeric: tabular-nums; min-width: 0; word-break: break-word; }
 
-        /* ── Metric cards ───────────────────────────────────────────── */
-        .midgard-ca-cards { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-top: 20px; }
+        /* ── Metric cards (single row; wraps to 2x2 on narrow screens) ── */
+        .midgard-ca-cards { display: grid; gap: 12px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 20px; }
         .midgard-ca-card { background: var(--mg-subtle); border: 1px solid var(--mg-border); border-radius: 10px; padding: 14px 16px; }
         .midgard-ca-card .mg-card-label { color: var(--mg-muted); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
         .midgard-ca-card .mg-card-value { color: var(--mg-text); font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; margin-top: 6px; }
@@ -191,6 +192,7 @@
             .midgard-clientarea.midgard-ca { padding: 16px; }
             .midgard-ca-title { font-size: 16px; }
             .midgard-ca-label { flex-basis: 80px; }
+            .midgard-ca-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
     </style>
 
@@ -237,16 +239,16 @@
             <span class="midgard-ca-value">{$midgardServiceHostname|default:$domain|default:'-'|escape}</span>
         </div>
         <div class="midgard-ca-row">
+            <span class="midgard-ca-label">OS</span>
+            <span class="midgard-ca-value" id="mg-card-os-value">{$midgardOsName|default:'-'|escape}</span>
+        </div>
+        <div class="midgard-ca-row">
             <span class="midgard-ca-label">IPv4</span>
             <span class="midgard-ca-value">{$midgardPrimaryIpv4|default:'-'|escape}</span>
         </div>
         <div class="midgard-ca-row">
             <span class="midgard-ca-label">IPv6</span>
             <span class="midgard-ca-value">{$midgardPrimaryIpv6|default:'-'|escape}</span>
-        </div>
-        <div class="midgard-ca-row">
-            <span class="midgard-ca-label">OS</span>
-            <span class="midgard-ca-value" id="mg-card-os-value">{$midgardOsName|default:'-'|escape}</span>
         </div>
     </div>
 
@@ -393,7 +395,9 @@
             }
 
             /* ── Status-aware action bar ─────────────────────────────── */
-            var currentStatus = null;
+            // Seed from the server-rendered status so the bar is correct
+            // on first paint (no flash of a Start button while running).
+            var currentStatus = root.getAttribute('data-status') || null;
             var busy = false;
 
             function setButtons() {
@@ -402,6 +406,10 @@
                 if (!start) { return; }
                 var transitional = TRANSITIONAL.indexOf(currentStatus) !== -1;
                 var locked = busy || transitional || currentStatus === 'suspended';
+                // Panel parity: while RUNNING the Start button disappears
+                // entirely — the bar shows only Stop / Restart / Rebuild /
+                // Console. It comes back the moment the server is stopped.
+                start.style.display = currentStatus === 'running' ? 'none' : '';
                 start.disabled = locked || currentStatus !== 'stopped';
                 stop.disabled = locked || currentStatus !== 'running';
                 restart.disabled = locked || currentStatus !== 'running';
@@ -617,6 +625,7 @@
 
             /* ── Wire up ─────────────────────────────────────────────── */
             if (cfg.actionsEnabled) {
+                setButtons();
                 $('mg-btn-start').addEventListener('click', function () { act('start'); });
                 $('mg-btn-stop').addEventListener('click', function () { act('stop'); });
                 $('mg-btn-restart').addEventListener('click', function () { act('restart'); });

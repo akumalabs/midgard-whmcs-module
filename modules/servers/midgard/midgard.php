@@ -995,6 +995,21 @@ function midgard_ClientArea(array $params): array
         }
     }
 
+    // Resource allocation (WHMCS config options as the baseline, refined by
+    // the live panel values when a sync has happened). Computed BEFORE the
+    // metric cards below — every allocation fallback (cores/GB/TB) reads
+    // $midgardSpecs from here.
+    $configSpecs = [
+        'cpu' => Config::intOption($params, 'cpu', 1),
+        'memory_gb' => Config::intOption($params, 'memory_gb', 1),
+        'disk_gb' => Config::intOption($params, 'disk_gb', 10),
+        'bandwidth_tb' => Config::intOption($params, 'bandwidth_tb', 1),
+        'backup_limit' => Config::intOption($params, 'backup_limit', 0),
+        'snapshot_limit' => Config::intOption($params, 'snapshot_limit', 0),
+        'os_image_id' => Config::intOption($params, 'os_image_id', 0),
+    ];
+    $midgardSpecs = SyncService::buildSpecsForClientArea($configSpecs, $meta);
+
     // ── Metric card formatters (panel-parity display) ────────────────────
     $fmtNum = static function ($value): string {
         $rounded = round((float) $value, 1);
@@ -1070,17 +1085,6 @@ function midgard_ClientArea(array $params): array
     $ipv4Warning = $ipv4Missing
         ? 'IPv4 is required for this service but is not currently assigned. Provisioning remains pending until IPv4 is assigned.'
         : '';
-
-    $configSpecs = [
-        'cpu' => Config::intOption($params, 'cpu', 1),
-        'memory_gb' => Config::intOption($params, 'memory_gb', 1),
-        'disk_gb' => Config::intOption($params, 'disk_gb', 10),
-        'bandwidth_tb' => Config::intOption($params, 'bandwidth_tb', 1),
-        'backup_limit' => Config::intOption($params, 'backup_limit', 0),
-        'snapshot_limit' => Config::intOption($params, 'snapshot_limit', 0),
-        'os_image_id' => Config::intOption($params, 'os_image_id', 0),
-    ];
-    $midgardSpecs = SyncService::buildSpecsForClientArea($configSpecs, $meta);
 
     $assignedIpsArray = [];
     foreach ($addresses as $addressRow) {
