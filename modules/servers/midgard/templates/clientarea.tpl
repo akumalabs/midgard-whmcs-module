@@ -623,10 +623,28 @@
                 setButtons();
                 api('sso').then(function (result) {
                     var url = (result && result.url) || '';
-                    if (url) {
-                        window.open(url, 'midgard-panel-console', 'width=1280,height=860,menubar=no,toolbar=no');
-                    } else {
+                    if (!url) {
                         showBanner('error', 'Panel did not return a console address.');
+                        return;
+                    }
+                    var win = window.open(url, 'midgard-panel-console', 'width=1280,height=860,menubar=no,toolbar=no');
+                    if (win) {
+                        try { win.opener = null; } catch (ignored) {}
+                        return;
+                    }
+                    // Popup blocked: leave a manual link instead of silence.
+                    var b = $('mg-banner');
+                    if (b) {
+                        b.className = 'midgard-ca-banner mg-show mg-info';
+                        b.textContent = 'Popup diblokir browser — ';
+                        var a = document.createElement('a');
+                        a.href = url;
+                        a.target = '_blank';
+                        a.rel = 'noopener noreferrer';
+                        a.textContent = 'klik di sini untuk buka console di panel';
+                        a.style.color = '#4f46e5';
+                        a.style.textDecoration = 'underline';
+                        b.appendChild(a);
                     }
                 }).catch(function (err) {
                     showBanner('error', err.message || 'Could not open the console.');
