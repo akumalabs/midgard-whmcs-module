@@ -299,11 +299,13 @@ try {
                 midgard_ajax_respond(502, ['status' => 'error', 'message' => 'Panel did not return an SSO ticket.']);
             }
 
+            // The panel's login route is /auth/login (Login.vue reads the
+            // top-level sso_ticket query there; /login does not exist).
             $base = rtrim(\MidgardWhmcs\Config::panelBaseUrl($params), '/');
             midgard_ajax_respond(200, [
                 'status' => 'ok',
                 'data' => [
-                    'url' => $base . '/login?sso_ticket=' . rawurlencode($ticketValue),
+                    'url' => $base . '/auth/login?sso_ticket=' . rawurlencode($ticketValue),
                 ],
             ]);
 

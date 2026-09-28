@@ -102,7 +102,7 @@
         .midgard-ca-banner.mg-show { display: block; }
 
         /* ── Definition rows ────────────────────────────────────────── */
-        .midgard-ca-rows { border-top: 1px solid var(--mg-border); display: grid; gap: 0 32px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); margin-top: 20px; padding-top: 6px; }
+        .midgard-ca-rows { border-top: 1px solid var(--mg-border); display: grid; gap: 0; grid-template-columns: 1fr; margin-top: 20px; padding-top: 6px; }
         .midgard-ca-row { align-items: baseline; border-bottom: 1px solid var(--mg-border); display: flex; gap: 12px; padding: 9px 0; }
         .midgard-ca-label { color: var(--mg-muted); flex: 0 0 88px; font-size: 12px; font-weight: 500; letter-spacing: 0.02em; }
         .midgard-ca-value { color: var(--mg-text); flex: 1; font-size: 13.5px; font-weight: 500; font-variant-numeric: tabular-nums; min-width: 0; word-break: break-word; }
