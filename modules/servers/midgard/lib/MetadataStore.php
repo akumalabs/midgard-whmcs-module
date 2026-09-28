@@ -35,6 +35,7 @@ class MetadataStore implements PasswordDispatchStore
             'midgard_server_id' => (string) ($row->midgard_server_id ?? ''),
             'midgard_server_uuid' => (string) ($row->midgard_server_uuid ?? ''),
             'midgard_provision_state' => (string) ($row->midgard_provision_state ?? 'installing'),
+            'midgard_runtime_status' => (string) ($row->midgard_runtime_status ?? 'unknown'),
             'midgard_last_error' => (string) ($row->midgard_last_error ?? ''),
             'midgard_welcome_template' => (string) ($row->midgard_welcome_template ?? ''),
             'midgard_password_email_sent_at' => (string) ($row->midgard_password_email_sent_at ?? ''),
@@ -66,6 +67,7 @@ class MetadataStore implements PasswordDispatchStore
             'midgard_server_id' => (string) ($data['midgard_server_id'] ?? ''),
             'midgard_server_uuid' => (string) ($data['midgard_server_uuid'] ?? ''),
             'midgard_provision_state' => (string) ($data['midgard_provision_state'] ?? 'installing'),
+            'midgard_runtime_status' => (string) ($data['midgard_runtime_status'] ?? 'unknown'),
             'midgard_last_error' => (string) ($data['midgard_last_error'] ?? ''),
             'midgard_welcome_template' => (string) ($data['midgard_welcome_template'] ?? ''),
             'midgard_password_email_sent_at' => (string) ($data['midgard_password_email_sent_at'] ?? ''),
@@ -526,6 +528,7 @@ class MetadataStore implements PasswordDispatchStore
             'midgard_server_id' => '',
             'midgard_server_uuid' => '',
             'midgard_provision_state' => 'installing',
+            'midgard_runtime_status' => 'unknown',
             'midgard_last_error' => '',
             'midgard_welcome_template' => '',
             'midgard_password_email_sent_at' => '',
@@ -578,6 +581,9 @@ class MetadataStore implements PasswordDispatchStore
             },
             'midgard_stats_json' => static function ($table): void {
                 $table->text('midgard_stats_json')->nullable();
+            },
+            'midgard_runtime_status' => static function ($table): void {
+                $table->string('midgard_runtime_status', 32)->nullable();
             },
             'midgard_os_name' => static function ($table): void {
                 $table->string('midgard_os_name', 191)->nullable();

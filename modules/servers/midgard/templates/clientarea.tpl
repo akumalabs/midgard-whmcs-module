@@ -1,34 +1,35 @@
-<div class="midgard-clientarea midgard-ca-dark" id="midgard-ca"
+<div class="midgard-clientarea midgard-ca" id="midgard-ca"
      data-actions-enabled="{$midgardActionsEnabled|default:0}"
      data-ajax-url="{$midgardAjaxUrl|default:''|escape}"
      data-console-url="{$midgardConsoleUrl|default:''|escape}"
      data-csrf="{$midgardCsrf|default:''|escape}"
      data-service-id="{$midgardServerId|default:0}">
     <style>
-        .midgard-clientarea.midgard-ca-dark {
-            --mg-bg: #09090b;
-            --mg-surface: #18181b;
-            --mg-border: #2a2a3d;
-            --mg-border-strong: #3f3f5a;
-            --mg-text: #fafafa;
-            --mg-muted: #a1a1aa;
+        .midgard-clientarea.midgard-ca {
+            --mg-surface: #ffffff;
+            --mg-subtle: #fafafa;
+            --mg-border: #e4e4e7;
+            --mg-border-strong: #d4d4d8;
+            --mg-text: #18181b;
+            --mg-muted: #71717a;
+            --mg-faint: #a1a1aa;
             --mg-indigo: #6366f1;
-            --mg-indigo-soft: #a5b4fc;
-            --mg-success: #22c55e;
-            --mg-danger: #ef4444;
-            --mg-danger-solid: #dc2626;
-            --mg-warning: #eab308;
-            background: var(--mg-bg);
+            --mg-indigo-soft: #4f46e5;
+            --mg-success: #16a34a;
+            --mg-danger: #dc2626;
+            --mg-danger-hover: #ef4444;
+            --mg-warning: #ca8a04;
+            background: var(--mg-surface);
             border: 1px solid var(--mg-border);
-            border-radius: 14px;
+            border-radius: 12px;
             color: var(--mg-text);
             font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-            padding: 22px;
+            padding: 24px;
         }
 
-        .midgard-clientarea.midgard-ca-dark *,
-        .midgard-clientarea.midgard-ca-dark *::before,
-        .midgard-clientarea.midgard-ca-dark *::after { box-sizing: border-box; }
+        .midgard-clientarea.midgard-ca *,
+        .midgard-clientarea.midgard-ca *::before,
+        .midgard-clientarea.midgard-ca *::after { box-sizing: border-box; }
 
         /* Primary CSS kill: hide pre-content siblings in wrappers that directly host Midgard block. */
         :where(.tab-pane, .tab-content, .module-client-area, .moduleclientarea, .panel-body):has(> .midgard-clientarea) > :not(.midgard-clientarea):not(script):not(style) {
@@ -37,23 +38,23 @@
 
         /* ── Header ─────────────────────────────────────────────────── */
         .midgard-ca-header { align-items: center; display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; }
-        .midgard-ca-title-wrap { align-items: center; display: flex; gap: 12px; min-width: 0; }
-        .midgard-ca-title { color: var(--mg-text); font-size: 20px; font-weight: 600; line-height: 1.2; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .midgard-ca-title-wrap { align-items: center; display: flex; gap: 10px; min-width: 0; }
+        .midgard-ca-title { color: var(--mg-text); font-size: 18px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.3; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-        /* Status pulse (retained from the previous client area) */
-        .midgard-clientarea .midgard-header-status { align-items: center; display: inline-flex; gap: 8px; }
-        .midgard-clientarea .midgard-status-dot { border-radius: 50%; display: inline-block; height: 9px; width: 9px; }
-        .midgard-clientarea .midgard-status-text { font-size: 12px; font-weight: 600; letter-spacing: 0.03em; line-height: 1; text-transform: uppercase; }
-        .midgard-clientarea .midgard-status-state-success { color: #2ea44f; }
-        .midgard-clientarea .midgard-status-state-success .midgard-status-dot { background: #2ea44f; animation: midgard-pulse-green 1.6s infinite; }
-        .midgard-clientarea .midgard-status-state-warning { color: #d29922; }
-        .midgard-clientarea .midgard-status-state-warning .midgard-status-dot { background: #d29922; animation: midgard-pulse-yellow 1.6s infinite; }
-        .midgard-clientarea .midgard-status-state-danger { color: #cf222e; }
-        .midgard-clientarea .midgard-status-state-danger .midgard-status-dot { background: #cf222e; animation: midgard-pulse-red 1.6s infinite; }
-        .midgard-clientarea .midgard-status-state-suspended { color: #8250df; }
-        .midgard-clientarea .midgard-status-state-suspended .midgard-status-dot { background: #8250df; animation: midgard-pulse-purple 1.6s infinite; }
-        .midgard-clientarea .midgard-status-state-default { color: #656d76; }
-        .midgard-clientarea .midgard-status-state-default .midgard-status-dot { background: #656d76; animation: midgard-pulse-darkgray 1.6s infinite; }
+        /* Status pulse (panel parity) */
+        .midgard-clientarea .midgard-header-status { align-items: center; display: inline-flex; flex: 0 0 auto; gap: 7px; }
+        .midgard-clientarea .midgard-status-dot { border-radius: 50%; display: inline-block; height: 8px; width: 8px; }
+        .midgard-clientarea .midgard-status-text { font-size: 11px; font-weight: 600; letter-spacing: 0.05em; line-height: 1; text-transform: uppercase; }
+        .midgard-clientarea .midgard-status-state-success { color: var(--mg-success); }
+        .midgard-clientarea .midgard-status-state-success .midgard-status-dot { background: var(--mg-success); animation: midgard-pulse-green 1.6s infinite; }
+        .midgard-clientarea .midgard-status-state-warning { color: var(--mg-warning); }
+        .midgard-clientarea .midgard-status-state-warning .midgard-status-dot { background: var(--mg-warning); animation: midgard-pulse-yellow 1.6s infinite; }
+        .midgard-clientarea .midgard-status-state-danger { color: var(--mg-danger); }
+        .midgard-clientarea .midgard-status-state-danger .midgard-status-dot { background: var(--mg-danger); animation: midgard-pulse-red 1.6s infinite; }
+        .midgard-clientarea .midgard-status-state-suspended { color: #7c3aed; }
+        .midgard-clientarea .midgard-status-state-suspended .midgard-status-dot { background: #7c3aed; animation: midgard-pulse-purple 1.6s infinite; }
+        .midgard-clientarea .midgard-status-state-default { color: var(--mg-faint); }
+        .midgard-clientarea .midgard-status-state-default .midgard-status-dot { background: var(--mg-faint); animation: midgard-pulse-gray 1.6s infinite; }
 
         /* ── Action bar ─────────────────────────────────────────────── */
         .midgard-ca-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; }
@@ -62,66 +63,66 @@
             align-items: center;
             background: transparent;
             border: 1px solid var(--mg-border-strong);
-            border-radius: 6px;
+            border-radius: 8px;
             color: var(--mg-muted);
             cursor: pointer;
             display: inline-flex;
-            height: 40px;
+            height: 38px;
             justify-content: center;
             transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-            width: 56px;
+            width: 52px;
         }
-        .mg-icon-btn svg { height: 20px; width: 20px; }
-        .mg-icon-btn:disabled { cursor: not-allowed; opacity: 0.5; }
-        .mg-icon-btn.mg-start { border-color: rgba(34, 197, 94, 0.4); color: var(--mg-success); }
-        .mg-icon-btn.mg-start:hover:not(:disabled) { background: rgba(34, 197, 94, 0.1); }
-        .mg-icon-btn.mg-stop { border-color: rgba(239, 68, 68, 0.4); color: #ef4444; }
-        .mg-icon-btn.mg-stop:hover:not(:disabled) { background: rgba(239, 68, 68, 0.1); }
-        .mg-icon-btn.mg-restart { border-color: rgba(234, 179, 8, 0.4); color: var(--mg-warning); }
-        .mg-icon-btn.mg-restart:hover:not(:disabled) { background: rgba(234, 179, 8, 0.1); }
-        .mg-icon-btn.mg-console { border-color: var(--mg-border-strong); color: #d4d4d8; }
-        .mg-icon-btn.mg-console:hover:not(:disabled) { background: var(--mg-surface); color: #ffffff; }
+        .mg-icon-btn svg { height: 18px; width: 18px; }
+        .mg-icon-btn:disabled { cursor: not-allowed; opacity: 0.45; }
+        .mg-icon-btn.mg-start { border-color: rgba(22, 163, 74, 0.4); color: var(--mg-success); }
+        .mg-icon-btn.mg-start:hover:not(:disabled) { background: rgba(22, 163, 74, 0.08); }
+        .mg-icon-btn.mg-stop { border-color: rgba(220, 38, 38, 0.4); color: var(--mg-danger); }
+        .mg-icon-btn.mg-stop:hover:not(:disabled) { background: rgba(220, 38, 38, 0.08); }
+        .mg-icon-btn.mg-restart { border-color: rgba(202, 138, 4, 0.45); color: var(--mg-warning); }
+        .mg-icon-btn.mg-restart:hover:not(:disabled) { background: rgba(202, 138, 4, 0.08); }
+        .mg-icon-btn.mg-console { color: #52525b; }
+        .mg-icon-btn.mg-console:hover:not(:disabled) { background: var(--mg-subtle); color: var(--mg-text); }
         .mg-icon-btn.mg-rebuild {
-            background: var(--mg-danger-solid);
+            background: var(--mg-danger);
             border: none;
-            border-radius: 6px;
+            border-radius: 8px;
             color: #ffffff;
             font-size: 13px;
             font-weight: 500;
             gap: 6px;
-            height: 40px;
+            height: 38px;
             padding: 0 14px;
             width: auto;
         }
-        .mg-icon-btn.mg-rebuild:hover:not(:disabled) { background: var(--mg-danger); }
+        .mg-icon-btn.mg-rebuild:hover:not(:disabled) { background: var(--mg-danger-hover); }
 
-        .midgard-ca-banner { border-radius: 8px; display: none; font-size: 13px; margin-top: 12px; padding: 10px 12px; }
-        .midgard-ca-banner.mg-error { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: var(--mg-danger); }
-        .midgard-ca-banner.mg-info { background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.25); color: var(--mg-indigo-soft); }
+        .midgard-ca-banner { border-radius: 8px; display: none; font-size: 13px; margin-top: 14px; padding: 10px 12px; }
+        .midgard-ca-banner.mg-error { background: rgba(220, 38, 38, 0.06); border: 1px solid rgba(220, 38, 38, 0.25); color: var(--mg-danger); }
+        .midgard-ca-banner.mg-info { background: rgba(99, 102, 241, 0.06); border: 1px solid rgba(99, 102, 241, 0.3); color: var(--mg-indigo-soft); }
         .midgard-ca-banner.mg-show { display: block; }
 
         /* ── Definition rows ────────────────────────────────────────── */
-        .midgard-ca-rows { border-top: 1px solid var(--mg-border); margin-top: 18px; padding-top: 18px; }
-        .midgard-ca-row { align-items: baseline; display: flex; gap: 10px; padding: 5px 0; }
-        .midgard-ca-label { color: var(--mg-muted); flex: 0 0 116px; font-size: 13px; font-weight: 600; }
-        .midgard-ca-value { color: var(--mg-text); flex: 1; font-size: 14px; min-width: 0; word-break: break-word; }
+        .midgard-ca-rows { border-top: 1px solid var(--mg-border); display: grid; gap: 0 32px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); margin-top: 20px; padding-top: 6px; }
+        .midgard-ca-row { align-items: baseline; border-bottom: 1px solid var(--mg-border); display: flex; gap: 12px; padding: 9px 0; }
+        .midgard-ca-label { color: var(--mg-muted); flex: 0 0 88px; font-size: 12px; font-weight: 500; letter-spacing: 0.02em; }
+        .midgard-ca-value { color: var(--mg-text); flex: 1; font-size: 13.5px; font-weight: 500; font-variant-numeric: tabular-nums; min-width: 0; word-break: break-word; }
 
         /* ── Metric cards ───────────────────────────────────────────── */
-        .midgard-ca-cards { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-top: 18px; }
-        .midgard-ca-card { background: var(--mg-surface); border: 1px solid var(--mg-border); border-radius: 10px; padding: 14px 16px; }
-        .midgard-ca-card .mg-card-label { color: var(--mg-muted); font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
-        .midgard-ca-card .mg-card-value { color: var(--mg-text); font-size: 20px; font-weight: 600; margin-top: 6px; }
-        .midgard-ca-card .mg-card-sub { color: var(--mg-muted); font-size: 11px; margin-top: 3px; min-height: 14px; }
+        .midgard-ca-cards { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-top: 20px; }
+        .midgard-ca-card { background: var(--mg-subtle); border: 1px solid var(--mg-border); border-radius: 10px; padding: 14px 16px; }
+        .midgard-ca-card .mg-card-label { color: var(--mg-muted); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+        .midgard-ca-card .mg-card-value { color: var(--mg-text); font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; margin-top: 6px; }
+        .midgard-ca-card .mg-card-sub { color: var(--mg-faint); font-size: 11.5px; margin-top: 3px; min-height: 15px; }
 
         /* ── Alerts (provisioning) ──────────────────────────────────── */
         .midgard-clientarea .midgard-ca-alert { border-radius: 8px; font-size: 13px; margin-top: 14px; padding: 10px 12px; }
-        .midgard-ca-alert.mg-warn { background: rgba(234, 179, 8, 0.1); border: 1px solid rgba(234, 179, 8, 0.2); color: var(--mg-warning); }
-        .midgard-ca-alert.mg-danger { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: var(--mg-danger); }
+        .midgard-ca-alert.mg-warn { background: rgba(202, 138, 4, 0.07); border: 1px solid rgba(202, 138, 4, 0.3); color: #854d0e; }
+        .midgard-ca-alert.mg-danger { background: rgba(220, 38, 38, 0.06); border: 1px solid rgba(220, 38, 38, 0.25); color: var(--mg-danger); }
 
-        /* ── Rebuild modal (clone of panel RebuildModal dark glass) ── */
+        /* ── Rebuild modal ──────────────────────────────────────────── */
         .mg-modal-backdrop {
             align-items: flex-start;
-            background: rgba(0, 0, 0, 0.65);
+            background: rgba(24, 24, 27, 0.45);
             display: none;
             inset: 0;
             justify-content: center;
@@ -132,24 +133,25 @@
         }
         .mg-modal-backdrop.mg-open { display: flex; }
         .mg-modal {
-            background: var(--mg-surface);
+            background: #ffffff;
             border: 1px solid var(--mg-border);
-            border-radius: 12px;
+            border-radius: 14px;
+            box-shadow: 0 20px 50px rgba(24, 24, 27, 0.18);
             color: var(--mg-text);
             max-height: calc(100vh - 96px);
             overflow-y: auto;
-            width: min(560px, 100%);
+            width: min(540px, 100%);
         }
-        .mg-modal-head { align-items: center; border-bottom: 1px solid var(--mg-border); display: flex; justify-content: space-between; padding: 14px 18px; }
-        .mg-modal-title { font-size: 15px; font-weight: 600; margin: 0; }
+        .mg-modal-head { align-items: center; border-bottom: 1px solid var(--mg-border); display: flex; justify-content: space-between; padding: 15px 18px; }
+        .mg-modal-title { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; margin: 0; }
         .mg-modal-x { background: transparent; border: none; color: var(--mg-muted); cursor: pointer; font-size: 18px; line-height: 1; padding: 4px; }
-        .mg-modal-x:hover { color: #ffffff; }
+        .mg-modal-x:hover { color: var(--mg-text); }
         .mg-modal-body { padding: 16px 18px 18px; }
-        .mg-modal-warn { background: rgba(234, 179, 8, 0.1); border: 1px solid rgba(234, 179, 8, 0.2); border-radius: 8px; color: var(--mg-warning); font-size: 13px; margin-bottom: 16px; padding: 10px 12px; }
+        .mg-modal-warn { background: rgba(202, 138, 4, 0.07); border: 1px solid rgba(202, 138, 4, 0.3); border-radius: 8px; color: #854d0e; font-size: 13px; line-height: 1.5; margin-bottom: 16px; padding: 10px 12px; }
         .mg-field { margin-bottom: 14px; }
-        .mg-field label { color: var(--mg-muted); display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+        .mg-field label { color: var(--mg-muted); display: block; font-size: 11px; font-weight: 600; letter-spacing: 0.05em; margin-bottom: 6px; text-transform: uppercase; }
         .mg-field select, .mg-field input {
-            background: var(--mg-bg);
+            background: #ffffff;
             border: 1px solid var(--mg-border-strong);
             border-radius: 8px;
             color: var(--mg-text);
@@ -158,37 +160,37 @@
             width: 100%;
         }
         .mg-field select:focus, .mg-field input:focus { border-color: var(--mg-indigo); outline: none; }
-        .mg-field .mg-hint { color: var(--mg-muted); font-size: 12px; margin-top: 5px; }
+        .mg-field .mg-hint { color: var(--mg-faint); font-size: 12px; margin-top: 5px; }
         .mg-modal-foot { border-top: 1px solid var(--mg-border); display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; padding-top: 14px; }
         .mg-btn { border: 1px solid var(--mg-border-strong); border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; padding: 9px 16px; }
-        .mg-btn-ghost { background: transparent; color: var(--mg-muted); }
+        .mg-btn-ghost { background: #ffffff; color: var(--mg-muted); }
         .mg-btn-ghost:hover:not(:disabled) { color: var(--mg-text); }
-        .mg-btn-danger { background: var(--mg-danger-solid); border-color: var(--mg-danger-solid); color: #ffffff; }
-        .mg-btn-danger:hover:not(:disabled) { background: var(--mg-danger); }
+        .mg-btn-danger { background: var(--mg-danger); border-color: var(--mg-danger); color: #ffffff; }
+        .mg-btn-danger:hover:not(:disabled) { background: var(--mg-danger-hover); }
         .mg-btn:disabled { cursor: not-allowed; opacity: 0.5; }
 
-        /* Checklist glass (phase 2) */
+        /* Rebuild checklist */
         .mg-checklist { list-style: none; margin: 0; padding: 0; }
-        .mg-check-item { align-items: center; display: flex; gap: 10px; padding: 7px 0; font-size: 13px; color: var(--mg-muted); }
+        .mg-check-item { align-items: center; color: var(--mg-faint); display: flex; font-size: 13px; gap: 10px; padding: 7px 0; }
         .mg-check-item.mg-done, .mg-check-item.mg-active { color: var(--mg-text); }
         .mg-check-dot { align-items: center; border: 1px solid var(--mg-border-strong); border-radius: 50%; display: inline-flex; flex: 0 0 18px; height: 18px; justify-content: center; width: 18px; }
-        .mg-check-item.mg-done .mg-check-dot { background: rgba(34, 197, 94, 0.15); border-color: var(--mg-success); color: var(--mg-success); }
+        .mg-check-item.mg-done .mg-check-dot { background: rgba(22, 163, 74, 0.1); border-color: var(--mg-success); color: var(--mg-success); }
         .mg-check-item.mg-active .mg-check-dot { border-color: var(--mg-indigo); }
-        .mg-spinner { animation: mg-spin 0.8s linear infinite; border: 2px solid rgba(99, 102, 241, 0.25); border-radius: 50%; border-top-color: var(--mg-indigo); display: inline-block; height: 14px; width: 14px; }
-        .mg-progress-track { background: var(--mg-bg); border: 1px solid var(--mg-border); border-radius: 999px; height: 8px; margin-top: 12px; overflow: hidden; }
+        .mg-spinner { animation: mg-spin 0.8s linear infinite; border: 2px solid rgba(99, 102, 241, 0.25); border-radius: 50%; border-top-color: var(--mg-indigo); display: inline-block; height: 13px; width: 13px; }
+        .mg-progress-track { background: var(--mg-subtle); border: 1px solid var(--mg-border); border-radius: 999px; height: 8px; margin-top: 12px; overflow: hidden; }
         .mg-progress-fill { background: var(--mg-indigo); height: 100%; transition: width 0.4s ease; width: 0; }
 
         @keyframes mg-spin { to { transform: rotate(360deg); } }
-        @keyframes midgard-pulse-green { 0% { box-shadow: 0 0 0 0 rgba(46, 164, 79, 0.5); } 70% { box-shadow: 0 0 0 8px rgba(46, 164, 79, 0); } 100% { box-shadow: 0 0 0 0 rgba(46, 164, 79, 0); } }
-        @keyframes midgard-pulse-yellow { 0% { box-shadow: 0 0 0 0 rgba(210, 153, 34, 0.45); } 70% { box-shadow: 0 0 0 8px rgba(210, 153, 34, 0); } 100% { box-shadow: 0 0 0 0 rgba(210, 153, 34, 0); } }
-        @keyframes midgard-pulse-red { 0% { box-shadow: 0 0 0 0 rgba(207, 34, 46, 0.45); } 70% { box-shadow: 0 0 0 8px rgba(207, 34, 46, 0); } 100% { box-shadow: 0 0 0 0 rgba(207, 34, 46, 0); } }
-        @keyframes midgard-pulse-purple { 0% { box-shadow: 0 0 0 0 rgba(130, 80, 223, 0.5); } 70% { box-shadow: 0 0 0 8px rgba(130, 80, 223, 0); } 100% { box-shadow: 0 0 0 0 rgba(130, 80, 223, 0); } }
-        @keyframes midgard-pulse-darkgray { 0% { box-shadow: 0 0 0 0 rgba(101, 109, 118, 0.45); } 70% { box-shadow: 0 0 0 8px rgba(101, 109, 118, 0); } 100% { box-shadow: 0 0 0 0 rgba(101, 109, 118, 0); } }
+        @keyframes midgard-pulse-green { 0% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.35); } 70% { box-shadow: 0 0 0 7px rgba(22, 163, 74, 0); } 100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); } }
+        @keyframes midgard-pulse-yellow { 0% { box-shadow: 0 0 0 0 rgba(202, 138, 4, 0.35); } 70% { box-shadow: 0 0 0 7px rgba(202, 138, 4, 0); } 100% { box-shadow: 0 0 0 0 rgba(202, 138, 4, 0); } }
+        @keyframes midgard-pulse-red { 0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.35); } 70% { box-shadow: 0 0 0 7px rgba(220, 38, 38, 0); } 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); } }
+        @keyframes midgard-pulse-purple { 0% { box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.35); } 70% { box-shadow: 0 0 0 7px rgba(124, 58, 237, 0); } 100% { box-shadow: 0 0 0 0 rgba(124, 58, 237, 0); } }
+        @keyframes midgard-pulse-gray { 0% { box-shadow: 0 0 0 0 rgba(161, 161, 170, 0.35); } 70% { box-shadow: 0 0 0 7px rgba(161, 161, 170, 0); } 100% { box-shadow: 0 0 0 0 rgba(161, 161, 170, 0); } }
 
         @media (max-width: 767px) {
-            .midgard-clientarea.midgard-ca-dark { padding: 16px; }
-            .midgard-ca-title { font-size: 18px; }
-            .midgard-ca-label { flex-basis: 96px; }
+            .midgard-clientarea.midgard-ca { padding: 16px; }
+            .midgard-ca-title { font-size: 16px; }
+            .midgard-ca-label { flex-basis: 80px; }
         }
     </style>
 
@@ -250,11 +252,6 @@
 
     {* ── Metric cards ────────────────────────────────────────────────── *}
     <div class="midgard-ca-cards">
-        <div class="midgard-ca-card">
-            <div class="mg-card-label">Uptime</div>
-            <div class="mg-card-value" id="mg-card-uptime">{$midgardCards.uptime.value|default:'-'|escape}</div>
-            <div class="mg-card-sub">{$midgardCards.uptime.sub|default:''|escape}</div>
-        </div>
         <div class="midgard-ca-card">
             <div class="mg-card-label">CPU</div>
             <div class="mg-card-value" id="mg-card-cpu">{$midgardCards.cpu.value|default:'-'|escape}</div>
@@ -441,7 +438,7 @@
 
             function refreshStatus() {
                 api('status').then(function (data) {
-                    if (data.status) { setStatus(data.status); }
+                    if (data.status && data.status !== 'unknown') { setStatus(data.status); }
                     if (data.os_name) {
                         var os = $('mg-card-os-value');
                         if (os) { os.textContent = data.os_name; }
@@ -620,9 +617,9 @@
 
             /* ── Wire up ─────────────────────────────────────────────── */
             if (cfg.actionsEnabled) {
-                $('mg-btn-start').addEventListener('click', function () { act('power_on'); });
-                $('mg-btn-stop').addEventListener('click', function () { act('power_off'); });
-                $('mg-btn-restart').addEventListener('click', function () { act('reboot'); });
+                $('mg-btn-start').addEventListener('click', function () { act('start'); });
+                $('mg-btn-stop').addEventListener('click', function () { act('stop'); });
+                $('mg-btn-restart').addEventListener('click', function () { act('restart'); });
                 $('mg-btn-rebuild').addEventListener('click', openModal);
                 $('mg-btn-console').addEventListener('click', openConsole);
 

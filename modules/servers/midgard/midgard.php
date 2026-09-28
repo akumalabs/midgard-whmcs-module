@@ -956,7 +956,7 @@ function midgard_ClientArea(array $params): array
     };
     $runtimeStatusClass = match ($runtimeStatus) {
         'running'    => 'success',
-        'stopped'    => 'danger',
+        'stopped'    => 'default',
         'failed',
         'error'      => 'danger',
         'installing' => 'warning',
@@ -996,23 +996,6 @@ function midgard_ClientArea(array $params): array
     }
 
     // ── Metric card formatters (panel-parity display) ────────────────────
-    $fmtUptime = static function ($seconds): string {
-        $seconds = (int) $seconds;
-        if ($seconds <= 0) {
-            return '—';
-        }
-        $d = intdiv($seconds, 86400);
-        $h = intdiv($seconds % 86400, 3600);
-        $m = intdiv($seconds % 3600, 60);
-        if ($d > 0) {
-            return $d . 'd ' . $h . 'h';
-        }
-        if ($h > 0) {
-            return $h . 'h ' . $m . 'm';
-        }
-
-        return $m . 'm';
-    };
     $fmtNum = static function ($value): string {
         $rounded = round((float) $value, 1);
         if (fmod($rounded, 1.0) === 0.0) {
@@ -1033,37 +1016,37 @@ function midgard_ClientArea(array $params): array
         return $fmtNum((int) $bytes / (1024 * 1024 * 1024)) . ' GB';
     };
 
-    $midgardCards = [];
+    // Keyed by card id — the template reads $midgardCards.cpu.value etc.
+    // Live values come from the synced vm_stats snapshot; when it is not
+    // available yet the cards fall back to the ALLOCATION (never dashes),
+    // which is still true information.
     $statsCpu = isset($midgardStats['cpu_percent']) ? (float) $midgardStats['cpu_percent'] : null;
-    $statsUptime = isset($midgardStats['uptime']) ? (int) $midgardStats['uptime'] : null;
     $statsMem = isset($midgardStats['mem']) ? (int) $midgardStats['mem'] : null;
     $statsDisk = isset($midgardStats['disk']) ? (int) $midgardStats['disk'] : null;
     $statsBw = isset($midgardStats['bandwidth_usage']) ? (int) $midgardStats['bandwidth_usage'] : null;
 
-    $midgardCards[] = [
-        'label' => 'Uptime',
-        'value' => $runtimeStatus === 'stopped' ? 'Stopped' : ($statsUptime !== null ? $fmtUptime($statsUptime) : '—'),
-        'sub' => '',
-    ];
-    $midgardCards[] = [
-        'label' => 'CPU',
-        'value' => $statsCpu !== null ? str_replace('.0', '', sprintf('%.1f', $statsCpu)) . '%' : '—',
-        'sub' => 'of ' . (int) ($midgardSpecs['cpu'] ?? 0) . ' Core(s)',
-    ];
-    $midgardCards[] = [
-        'label' => 'Memory',
-        'value' => ($statsMem !== null && $statsMem > 0) ? $fmtGb($statsMem) . ' / ' . (int) ($midgardSpecs['memory_gb'] ?? 0) . ' GB' : (int) ($midgardSpecs['memory_gb'] ?? 0) . ' GB',
-        'sub' => 'used / allocated',
-    ];
-    $midgardCards[] = [
-        'label' => 'Disk',
-        'value' => ($statsDisk !== null && $statsDisk > 0) ? $fmtGb($statsDisk) . ' / ' . (int) ($midgardSpecs['disk_gb'] ?? 0) . ' GB' : (int) ($midgardSpecs['disk_gb'] ?? 0) . ' GB',
-        'sub' => 'used / allocated',
-    ];
-    $midgardCards[] = [
-        'label' => 'Bandwidth',
-        'value' => ($statsBw !== null && $statsBw > 0) ? $fmtBandwidth($statsBw) : '0 GB',
-        'sub' => 'of ' . (int) ($midgardSpecs['bandwidth_tb'] ?? 0) . ' TB',
+    $allocCpu = (int) ($midgardSpecs['cpu'] ?? 0);
+    $allocMem = (int) ($midgardSpecs['memory_gb'] ?? 0);
+    $allocDisk = (int) ($midgardSpecs['disk_gb'] ?? 0);
+    $allocBw = (int) ($midgardSpecs['bandwidth_tb'] ?? 0);
+
+    $midgardCards = [
+        'cpu' => [
+            'value' => $statsCpu !== null ? str_replace('.0', '', sprintf('%.1f', $statsCpu)) . '%' : $allocCpu . ' Core(s)',
+            'sub' => $statsCpu !== null ? 'of ' . $allocCpu . ' Core(s)' : 'allocated',
+        ],
+        'memory' => [
+            'value' => ($statsMem !== null && $statsMem > 0) ? $fmtGb($statsMem) . ' / ' . $allocMem . ' GB' : $allocMem . ' GB',
+            'sub' => ($statsMem !== null && $statsMem > 0) ? 'used / allocated' : 'allocated',
+        ],
+        'disk' => [
+            'value' => ($statsDisk !== null && $statsDisk > 0) ? $fmtGb($statsDisk) . ' / ' . $allocDisk . ' GB' : $allocDisk . ' GB',
+            'sub' => ($statsDisk !== null && $statsDisk > 0) ? 'used / allocated' : 'allocated',
+        ],
+        'bandwidth' => [
+            'value' => ($statsBw !== null && $statsBw > 0) ? $fmtBandwidth($statsBw) : '0 GB',
+            'sub' => 'of ' . $allocBw . ' TB',
+        ],
     ];
 
     $addresses = [];
