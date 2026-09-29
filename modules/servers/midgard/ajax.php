@@ -193,12 +193,23 @@ try {
 
         case 'progress':
             $progress = $client->installProgress($serverId);
+            // Live server status rides along so the rebuild modal can keep
+            // the header badge truthful during transitional states without
+            // depending on the (possibly stale) synced meta.
+            $liveStatus = '';
+            try {
+                $live = $client->getServer($serverId);
+                $liveStatus = strtolower(trim((string) ($live['data']['status'] ?? '')));
+            } catch (\Throwable $ignored) {
+                $liveStatus = '';
+            }
             midgard_ajax_respond(200, [
                 'status' => 'ok',
                 'data' => [
                     'task_status' => (string) ($progress['status'] ?? ''),
                     'step' => (string) ($progress['step'] ?? ''),
                     'progress' => (int) ($progress['progress'] ?? 0),
+                    'server_status' => $liveStatus,
                 ],
             ]);
 

@@ -227,16 +227,14 @@ final class SyncService
      */
     public static function syncHostingNetwork(int $serviceId, array $networkSummary): void
     {
-        $mapped = self::mapHostingNetworkFields($networkSummary);
-
+        // Both WHMCS-native IP columns are deliberately kept EMPTY so the
+        // stock product-details template renders no IP rows at all; the
+        // client-facing IP list lives in the module's own Server Overview
+        // grid (metadata + ajax), not in tblhosting mirrors.
         Capsule::table('tblhosting')
             ->where('id', $serviceId)
             ->update([
-                'dedicatedip' => $mapped['dedicatedip'],
-                // Native WHMCS "Assigned IPs" row is deliberately NOT fed:
-                // when this column stays empty the stock product-details
-                // template skips the row entirely. The client-facing IP list
-                // lives in the module's own Server Overview grid.
+                'dedicatedip' => '',
                 'assignedips' => '',
             ]);
     }

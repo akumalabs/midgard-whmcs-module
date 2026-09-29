@@ -39,8 +39,8 @@
         }
 
         /* ── Header ─────────────────────────────────────────────────── */
-        .midgard-ca-header { align-items: center; display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; }
-        .midgard-ca-title { color: var(--mg-text); font-size: 20px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.3; margin: 0 0 30px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .midgard-ca-header { align-items: center; display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; margin-bottom: 20px; }
+        .midgard-ca-title { color: var(--mg-text); font-size: 20px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.3; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
         /* Status pulse (panel parity) */
         .midgard-clientarea .midgard-header-status { align-items: center; display: inline-flex; flex: 0 0 auto; gap: 7px; }
@@ -108,7 +108,7 @@
         /* ── Definition rows (2 kolom: kiri identitas, kanan resource) ── */
         .midgard-ca-rows { display: grid; column-gap: 32px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 30px; row-gap: 0; }
         .midgard-ca-row { align-items: baseline; display: flex; gap: 12px; padding: 7px 0; }
-        .midgard-ca-label { color: var(--mg-text); flex: 0 0 88px; font-size: 12.5px; font-weight: 550; letter-spacing: 0.02em; }
+        .midgard-ca-label { color: var(--mg-text); flex: 0 0 88px; font-size: 12.5px; font-weight: 600; letter-spacing: 0.02em; }
         .midgard-ca-value { color: var(--mg-text); flex: 1; font-size: 13.5px; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 0; word-break: break-word; }
 
         /* ── Alerts (provisioning) ──────────────────────────────────── */
@@ -502,9 +502,12 @@
                 loadTemplates();
             }
 
-            function closeModal() {
-                if (rebuilding) { return; }
+            function closeModal(force) {
+                if (rebuilding && !force) { return; }
                 modalOpen = false;
+                rebuilding = false;
+                clearInterval(pollTimer);
+                pollTimer = null;
                 $('mg-rebuild-backdrop').className = 'mg-modal-backdrop';
             }
             function showPhase(name) {
@@ -594,17 +597,18 @@
                     var taskStatus = String(pdata.task_status || '').toLowerCase();
                     var progress = (pdata.progress !== undefined && pdata.progress !== null)
                         ? Number(pdata.progress) : null;
+                    var liveStatus = String(pdata.server_status || '').toLowerCase();
+
+                    // Keep the header badge truthful while the rebuild runs
+                    // (panel live status, not the possibly-stale meta).
+                    if (liveStatus && liveStatus !== currentStatus) { setStatus(liveStatus); }
 
                     // Panel truth: the install task reports COMPLETED — the
-                    // rebuild is done even when the synced meta status has
-                    // not caught up yet (meta only refreshes on explicit
-                    // syncs). Kick a refresh so the header badge follows.
+                    // rebuild is done. Close the modal right away (no done
+                    // screen) and refresh so the header reflects reality.
                     if (taskStatus === 'completed' || (progress !== null && progress >= 100)) {
-                        stepIndex = STEPS.length - 1;
-                        lastProgress = 100;
-                        renderSteps(stepIndex);
                         api('refresh').catch(function () {});
-                        finishRebuild(true);
+                        closeModal(true);
                         return;
                     }
 
@@ -615,19 +619,25 @@
 
                     if (progress !== null && progress > lastProgress) {
                         lastProgress = progress;
-                        if (stepIndex < 2) { stepIndex = 2; }
                     }
 
+                    // Drive the checklist from the LIVE server state: the
+                    // task first stops/destroys the VM, then reinstalls, so
+                    // 'running'/'stopped' early on maps to the pre-install
+                    // steps; once the task owns the server it reports
+                    // transitional statuses (or a running state after boot).
                     if (status === 'rebuilding' || status === 'installing') {
-                        if (stepIndex < 1) { stepIndex = 1; }
+                        if (stepIndex < 2) { stepIndex = 2; }
                         renderSteps(stepIndex);
                         return;
                     }
 
                     if (status === 'running' || status === 'stopped') {
-                        // Meta already shows a settled state; park at the
-                        // finalizing step until the task reports completion.
-                        if (stepIndex < 3) { stepIndex = 3; }
+                        if (lastProgress > 0) {
+                            if (stepIndex < 3) { stepIndex = 3; }
+                        } else {
+                            if (stepIndex < 1) { stepIndex = 1; }
+                        }
                         renderSteps(stepIndex);
                         return;
                     }
