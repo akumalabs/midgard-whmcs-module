@@ -103,13 +103,13 @@
         .midgard-ca-banner.mg-show { display: block; }
 
         /* ── Server Overview header ─────────────────────────────────── */
-        .midgard-ca-overview { align-items: center; border-bottom: 1px solid var(--mg-border); display: flex; gap: 12px; justify-content: space-between; margin-bottom: 30px; padding-bottom: 14px; }
+        .midgard-ca-overview { align-items: center; border-bottom: 1px solid var(--mg-border); display: flex; gap: 12px; justify-content: space-between; margin-bottom: 20px; padding-bottom: 14px; }
         .midgard-ca-overview-title { color: var(--mg-text); font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
         /* ── Definition rows (2 kolom: kiri identitas, kanan resource) ── */
         .midgard-ca-rows { display: grid; column-gap: 32px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 30px; row-gap: 0; }
         .midgard-ca-row { align-items: baseline; display: flex; gap: 12px; padding: 7px 0; }
-        .midgard-ca-label { color: var(--mg-text); flex: 0 0 88px; font-size: 12.5px; font-weight: 600; letter-spacing: 0.02em; }
-        .midgard-ca-value { color: var(--mg-muted); flex: 1; font-size: 13.5px; font-weight: 500; font-variant-numeric: tabular-nums; min-width: 0; word-break: break-word; }
+        .midgard-ca-label { color: var(--mg-text); flex: 0 0 88px; font-size: 12.5px; font-weight: 550; letter-spacing: 0.02em; }
+        .midgard-ca-value { color: var(--mg-text); flex: 1; font-size: 13.5px; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 0; word-break: break-word; }
 
         /* ── Alerts (provisioning) ──────────────────────────────────── */
         .midgard-clientarea .midgard-ca-alert { border-radius: 8px; font-size: 13px; margin-top: 14px; padding: 10px 12px; }
@@ -175,11 +175,10 @@
         .mg-check-dot { align-items: center; border: 1px solid var(--mg-border-strong); border-radius: 50%; display: inline-flex; flex: 0 0 18px; height: 18px; justify-content: center; width: 18px; }
         .mg-check-item.mg-done .mg-check-dot { background: rgba(22, 163, 74, 0.1); border-color: var(--mg-success); color: var(--mg-success); }
         .mg-check-item.mg-active .mg-check-dot { border-color: var(--mg-indigo); }
-        .mg-spinner { animation: mg-pulse-soft 1.2s ease-in-out infinite; background: var(--mg-indigo); border-radius: 50%; display: inline-block; height: 9px; width: 9px; }
+        .mg-spinner { animation: mg-spin 0.8s linear infinite; border: 2px solid rgba(99, 102, 241, 0.25); border-radius: 50%; border-top-color: var(--mg-indigo); display: inline-block; height: 13px; width: 13px; }
         .mg-progress-track { display: none; }
         .mg-progress-fill { background: var(--mg-indigo); height: 100%; transition: width 0.4s ease; width: 0; }
 
-        @keyframes mg-pulse-soft { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
         @keyframes mg-spin { to { transform: rotate(360deg); } }
         @keyframes midgard-pulse-green { 0% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.35); } 70% { box-shadow: 0 0 0 7px rgba(22, 163, 74, 0); } 100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); } }
         @keyframes midgard-pulse-yellow { 0% { box-shadow: 0 0 0 0 rgba(202, 138, 4, 0.35); } 70% { box-shadow: 0 0 0 7px rgba(202, 138, 4, 0); } 100% { box-shadow: 0 0 0 0 rgba(202, 138, 4, 0); } }
@@ -333,7 +332,7 @@
                 </div>
 
                 <div id="mg-rebuild-phase-done" style="display: none;">
-                    <div class="mg-check-item mg-done"><span class="mg-check-dot">&#10003;</span> Rebuild complete. The new password was emailed to you.</div>
+                    <div class="mg-check-item mg-done"><span class="mg-check-dot">&#10003;</span> Rebuild complete.</div>
                     <div class="mg-modal-foot">
                         <button type="button" class="mg-btn mg-btn-ghost" id="mg-rebuild-done-close">Close</button>
                     </div>

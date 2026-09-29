@@ -233,7 +233,11 @@ final class SyncService
             ->where('id', $serviceId)
             ->update([
                 'dedicatedip' => $mapped['dedicatedip'],
-                'assignedips' => $mapped['assignedips'],
+                // Native WHMCS "Assigned IPs" row is deliberately NOT fed:
+                // when this column stays empty the stock product-details
+                // template skips the row entirely. The client-facing IP list
+                // lives in the module's own Server Overview grid.
+                'assignedips' => '',
             ]);
     }
 
