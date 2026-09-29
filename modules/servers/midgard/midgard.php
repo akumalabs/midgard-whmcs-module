@@ -36,6 +36,7 @@ require_once __DIR__ . '/lib/ProvisioningNetworkService.php';
 require_once __DIR__ . '/lib/SyncService.php';
 require_once __DIR__ . '/lib/TokenInfoStore.php';
 
+if (!function_exists('midgard_MetaData')) {
 function midgard_MetaData(): array
 {
     return [
@@ -44,7 +45,9 @@ function midgard_MetaData(): array
         'RequiresServer' => true,
     ];
 }
+}
 
+if (!function_exists('midgard_ConfigOptions')) {
 function midgard_ConfigOptions(): array
 {
     return [
@@ -106,7 +109,9 @@ function midgard_ConfigOptions(): array
         ],
     ];
 }
+}
 
+if (!function_exists('midgard_TestConnection')) {
 function midgard_TestConnection(array $params): array
 {
     try {
@@ -156,7 +161,9 @@ function midgard_TestConnection(array $params): array
         ];
     }
 }
+}
 
+if (!function_exists('midgard_registerCallbackWebhook')) {
 /**
  * Idempotent webhook-callback registration for this install (f2-c2 contract).
  * Called from TestConnection and the start of CreateAccount. Failures are
@@ -182,14 +189,18 @@ function midgard_registerCallbackWebhook(array $params): void
         logModuleCall('midgard', 'callbackWebhookRegistrationFailed', [], $e->getMessage(), null, []);
     }
 }
+}
 
+if (!function_exists('midgard_AdminCustomButtonArray')) {
 function midgard_AdminCustomButtonArray(): array
 {
     return [
         'Refresh from Panel' => 'RefreshFromPanel',
     ];
 }
+}
 
+if (!function_exists('midgard_CreateAccount')) {
 function midgard_CreateAccount(array $params)
 {
     $serviceId = (int) ($params['serviceid'] ?? 0);
@@ -834,7 +845,9 @@ function midgard_CreateAccount(array $params)
         }
     }
 }
+}
 
+if (!function_exists('midgard_SuspendAccount')) {
 function midgard_SuspendAccount(array $params)
 {
     try {
@@ -850,7 +863,9 @@ function midgard_SuspendAccount(array $params)
         return 'Suspend failed: ' . $e->getMessage();
     }
 }
+}
 
+if (!function_exists('midgard_UnsuspendAccount')) {
 function midgard_UnsuspendAccount(array $params)
 {
     try {
@@ -866,7 +881,9 @@ function midgard_UnsuspendAccount(array $params)
         return 'Unsuspend failed: ' . $e->getMessage();
     }
 }
+}
 
+if (!function_exists('midgard_TerminateAccount')) {
 function midgard_TerminateAccount(array $params)
 {
     $serviceId = (int) ($params['serviceid'] ?? 0);
@@ -887,7 +904,9 @@ function midgard_TerminateAccount(array $params)
         return 'Terminate failed: ' . $e->getMessage();
     }
 }
+}
 
+if (!function_exists('midgard_ChangePackage')) {
 function midgard_ChangePackage(array $params)
 {
     try {
@@ -912,7 +931,9 @@ function midgard_ChangePackage(array $params)
         return 'Change package failed: ' . $e->getMessage();
     }
 }
+}
 
+if (!function_exists('midgard_ClientArea')) {
 function midgard_ClientArea(array $params): array
 {
     $serviceId = (int) ($params['serviceid'] ?? 0);
@@ -1160,7 +1181,9 @@ function midgard_ClientArea(array $params): array
         'vars' => $templateVariables,
     ];
 }
+}
 
+if (!function_exists('midgard_AdminServicesTabFields')) {
 function midgard_AdminServicesTabFields(array $params): array
 {
     $meta = midgard_store()->get((int) ($params['serviceid'] ?? 0));
@@ -1192,7 +1215,9 @@ HTML;
         'Midgard Metadata' => $metaBlockField,
     ];
 }
+}
 
+if (!function_exists('midgard_AdminServicesTabFieldsSave')) {
 function midgard_AdminServicesTabFieldsSave(array $params): void
 {
     $serviceId = (int) ($params['serviceid'] ?? 0);
@@ -1310,7 +1335,9 @@ function midgard_AdminServicesTabFieldsSave(array $params): void
         ]);
     }
 }
+}
 
+if (!function_exists('midgard_RefreshFromPanel')) {
 function midgard_RefreshFromPanel(array $params)
 {
     $serviceId = (int) ($params['serviceid'] ?? 0);
@@ -1343,7 +1370,9 @@ function midgard_RefreshFromPanel(array $params)
         return 'Refresh failed: ' . $e->getMessage();
     }
 }
+}
 
+if (!function_exists('midgard_client')) {
 function midgard_client(array $params): ApiClient
 {
     // Mode-aware: "reseller|<token>" in the Access Hash selects the
@@ -1357,7 +1386,9 @@ function midgard_client(array $params): ApiClient
         TokenInfoStore::resolveBasePath($params)
     );
 }
+}
 
+if (!function_exists('midgard_store')) {
 function midgard_store(): MetadataStore
 {
     static $store = null;
@@ -1377,10 +1408,13 @@ function midgard_store(): MetadataStore
 
     return $store;
 }
+}
 
+if (!function_exists('midgard_generatePassword')) {
 function midgard_generatePassword(int $length = 16): string
 {
     return PasswordGenerator::generate();
+}
 }
 
 /**
@@ -1391,6 +1425,7 @@ function midgard_generatePassword(int $length = 16): string
  * CreateAccount invocation.  The word pools are kept in sync with
  * the panel's app/Services/Servers/RandomServerNameService.php.
  */
+if (!function_exists('midgard_generateServerName')) {
 function midgard_generateServerName(): string
 {
     $adjectives = [
@@ -1435,16 +1470,20 @@ function midgard_generateServerName(): string
 
     return ucfirst($adjectives[array_rand($adjectives)]) . ' ' . ucfirst($nouns[array_rand($nouns)]);
 }
+}
 
 /**
  * Convert a server name to a slug-style hostname.
  * e.g. "Silver Horizon" → "silver-horizon"
  */
+if (!function_exists('midgard_generateHostname')) {
 function midgard_generateHostname(string $serverName): string
 {
     return strtolower(trim((string) preg_replace('/[^a-zA-Z0-9]+/', '-', $serverName), '-'));
 }
+}
 
+if (!function_exists('midgard_clientName')) {
 function midgard_clientName(array $params): string
 {
     $first = trim((string) ($params['clientsdetails']['firstname'] ?? ''));
@@ -1460,7 +1499,9 @@ function midgard_clientName(array $params): string
 
     return $at === false ? $email : substr($email, 0, $at);
 }
+}
 
+if (!function_exists('midgard_setHostingStatus')) {
 function midgard_setHostingStatus(int $serviceId, string $status): void
 {
     if ($serviceId <= 0) {
@@ -1471,7 +1512,9 @@ function midgard_setHostingStatus(int $serviceId, string $status): void
         ->where('id', $serviceId)
         ->update(['domainstatus' => $status]);
 }
+}
 
+if (!function_exists('midgard_resolveHostingStatus')) {
 function midgard_resolveHostingStatus(array $params, int $serviceId): string
 {
     $status = strtolower(trim((string) ($params['status'] ?? '')));
@@ -1493,10 +1536,12 @@ function midgard_resolveHostingStatus(array $params, int $serviceId): string
         return '';
     }
 }
+}
 
 /**
  * @param array<string, mixed> $serverData
  */
+if (!function_exists('midgard_extractServerOwnerId')) {
 function midgard_extractServerOwnerId(array $serverData): int
 {
     $candidates = [
@@ -1515,6 +1560,7 @@ function midgard_extractServerOwnerId(array $serverData): int
 
     return 0;
 }
+}
 
 /**
  * @param array<string, mixed> $serverData
@@ -1524,6 +1570,7 @@ function midgard_extractServerOwnerId(array $serverData): int
  *   primary_ipv6: string
  * }
  */
+if (!function_exists('midgard_extractNetworkSummary')) {
 function midgard_extractNetworkSummary(array $serverData): array
 {
     $addressesRaw = $serverData['addresses'] ?? [];
@@ -1574,19 +1621,23 @@ function midgard_extractNetworkSummary(array $serverData): array
         'primary_ipv6' => $primaryIpv6,
     ];
 }
+}
 
 /**
  * @param array<string, mixed> $requestData
  * @param mixed $responseData
  */
+if (!function_exists('midgard_logDiagnostic')) {
 function midgard_logDiagnostic(string $action, array $requestData, $responseData = null): void
 {
     \MidgardWhmcs\DiagnosticLogger::log($action, $requestData, $responseData);
+}
 }
 
 /**
  * @param array<string, mixed> $payload
  */
+if (!function_exists('midgard_preflightFailureMessage')) {
 function midgard_preflightFailureMessage(array $payload): string
 {
     $insufficiencies = $payload['insufficiencies'] ?? [];
@@ -1616,4 +1667,5 @@ function midgard_preflightFailureMessage(array $payload): string
     }
 
     return $message;
+}
 }
