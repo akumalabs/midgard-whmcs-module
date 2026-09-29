@@ -103,8 +103,8 @@
         .midgard-ca-banner.mg-show { display: block; }
 
         /* ── Server Overview header ─────────────────────────────────── */
-        .midgard-ca-overview { align-items: center; display: flex; gap: 12px; justify-content: space-between; margin-bottom: 14px; }
-        .midgard-ca-overview-title { color: var(--mg-text); font-size: 18px; font-weight: 400; letter-spacing: -0.01em; }
+        .midgard-ca-overview { align-items: center; border-bottom: 1px solid var(--mg-border); display: flex; gap: 12px; justify-content: space-between; margin-bottom: 30px; padding-bottom: 14px; }
+        .midgard-ca-overview-title { color: var(--mg-text); font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
 
         /* ── Definition rows (2 kolom: kiri identitas, kanan resource) ── */
         .midgard-ca-rows { display: grid; column-gap: 32px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 14px; row-gap: 0; }
