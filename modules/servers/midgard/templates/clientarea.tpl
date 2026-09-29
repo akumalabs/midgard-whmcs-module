@@ -224,7 +224,7 @@
                 </button>
                 <span class="mg-sep" aria-hidden="true"></span>
                 <button type="button" class="mg-icon-btn mg-console" id="mg-btn-console" title="Console" aria-label="Open console">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
                 </button>
             </div>
         {/if}
@@ -235,25 +235,25 @@
     {* ── Definition rows ─────────────────────────────────────────────── *
      * Grid 2 kolom, auto-placement mengisi baris-per-baris. Urutan DOM
      * di-buat sehingga hasil visualnya:
-     *   kolom kiri: Hostname, OS,      CPU, RAM,  Disk
-     *   kolom kanan: IPv4,    IPv6,    Bandwidth, Backup, Snapshot
+     *   kolom kiri: VMID, Hostname, CPU, RAM, Disk
+     *   kolom kanan: OS, Location, Bandwidth, IPv4, IPv6
      *}
     <div class="midgard-ca-rows">
         <div class="midgard-ca-row">
-            <span class="midgard-ca-label">Hostname</span>
-            <span class="midgard-ca-value">{$midgardServiceHostname|default:$domain|default:'-'|escape}</span>
-        </div>
-        <div class="midgard-ca-row">
-            <span class="midgard-ca-label">IPv4</span>
-            <span class="midgard-ca-value">{$midgardPrimaryIpv4|default:'-'|escape}</span>
+            <span class="midgard-ca-label">VMID</span>
+            <span class="midgard-ca-value">{$midgardVmid|default:'-'|escape}</span>
         </div>
         <div class="midgard-ca-row">
             <span class="midgard-ca-label">OS</span>
             <span class="midgard-ca-value" id="mg-card-os-value">{$midgardOsName|default:'-'|escape}</span>
         </div>
         <div class="midgard-ca-row">
-            <span class="midgard-ca-label">IPv6</span>
-            <span class="midgard-ca-value">{$midgardPrimaryIpv6|default:'-'|escape}</span>
+            <span class="midgard-ca-label">Hostname</span>
+            <span class="midgard-ca-value">{$midgardServiceHostname|default:$domain|default:'-'|escape}</span>
+        </div>
+        <div class="midgard-ca-row">
+            <span class="midgard-ca-label">Location</span>
+            <span class="midgard-ca-value">{$midgardLocation|default:'-'|escape}</span>
         </div>
         <div class="midgard-ca-row">
             <span class="midgard-ca-label">CPU</span>
@@ -268,16 +268,16 @@
             <span class="midgard-ca-value">{$midgardSpecs.memory_gb|default:'-'} GB</span>
         </div>
         <div class="midgard-ca-row">
-            <span class="midgard-ca-label">Backup Slot</span>
-            <span class="midgard-ca-value">{$midgardSpecs.backup_limit|default:0}</span>
+            <span class="midgard-ca-label">IPv4</span>
+            <span class="midgard-ca-value">{$midgardPrimaryIpv4|default:'-'|escape}</span>
         </div>
         <div class="midgard-ca-row">
             <span class="midgard-ca-label">Disk</span>
             <span class="midgard-ca-value">{$midgardSpecs.disk_gb|default:'-'} GB</span>
         </div>
         <div class="midgard-ca-row">
-            <span class="midgard-ca-label">Snapshot Slot</span>
-            <span class="midgard-ca-value">{$midgardSpecs.snapshot_limit|default:0}</span>
+            <span class="midgard-ca-label">IPv6</span>
+            <span class="midgard-ca-value">{$midgardPrimaryIpv6|default:'-'|escape}</span>
         </div>
     </div>
 

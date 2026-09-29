@@ -1095,6 +1095,8 @@ function midgard_ClientArea(array $params): array
         'midgardAssignedIpsArray' => $assignedIpsArray,
         'midgardServerSpecs' => $midgardSpecs,
         'midgardOsName' => (string) ($meta['midgard_os_name'] ?? ''),
+        'midgardVmid' => (string) ($meta['midgard_vmid'] ?? ''),
+        'midgardLocation' => (string) ($meta['midgard_location'] ?? ''),
     ];
     logModuleCall('midgard', 'clientArea.responseKeys', [
         'serviceid' => $serviceId,

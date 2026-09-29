@@ -106,6 +106,26 @@ final class SyncService
                     $meta['midgard_os_name'] = (string) $osImage['name'];
                 }
 
+                // VMID + location (panel payload: vmid, node.{name, location.{name, short_code}}).
+                $vmid = trim((string) ($serverData['vmid'] ?? ''));
+                if ($vmid !== '') {
+                    $meta['midgard_vmid'] = $vmid;
+                }
+                $locationName = '';
+                $node = $serverData['node'] ?? null;
+                if (is_array($node)) {
+                    $nodeLocation = $node['location'] ?? null;
+                    if (is_array($nodeLocation)) {
+                        $locationName = trim((string) ($nodeLocation['name'] ?? ''));
+                    }
+                    if ($locationName === '') {
+                        $locationName = trim((string) ($node['name'] ?? ''));
+                    }
+                }
+                if ($locationName !== '') {
+                    $meta['midgard_location'] = $locationName;
+                }
+
                 if ($serverOwnerId > 0) {
                     $meta['midgard_user_id'] = (string) $serverOwnerId;
                 }
