@@ -1006,22 +1006,8 @@ function midgard_ClientArea(array $params): array
     $midgardActionsEnabled = ($midgardMode === \MidgardWhmcs\Config::MODE_ADMIN) && $midgardServerId > 0;
     $midgardAjaxUrl = 'modules/servers/midgard/ajax.php?serviceid=' . $serviceId;
 
-    // Latest collector snapshot for the metric cards (persisted by
-    // SyncService::syncFromPanel from the panel `stats` block). Null when
-    // the panel has not collected yet or runs a pre-stats panel version.
-    $midgardStats = null;
-    $statsRaw = trim((string) ($meta['midgard_stats_json'] ?? ''));
-    if ($statsRaw !== '') {
-        $decodedStats = json_decode($statsRaw, true);
-        if (is_array($decodedStats)) {
-            $midgardStats = $decodedStats;
-        }
-    }
-
     // Resource allocation (WHMCS config options as the baseline, refined by
-    // the live panel values when a sync has happened). Computed BEFORE the
-    // metric cards below — every allocation fallback (cores/GB/TB) reads
-    // $midgardSpecs from here.
+    // the live panel values when a sync has happened).
     $configSpecs = [
         'cpu' => Config::intOption($params, 'cpu', 1),
         'memory_gb' => Config::intOption($params, 'memory_gb', 1),
@@ -1032,60 +1018,6 @@ function midgard_ClientArea(array $params): array
         'os_image_id' => Config::intOption($params, 'os_image_id', 0),
     ];
     $midgardSpecs = SyncService::buildSpecsForClientArea($configSpecs, $meta);
-
-    // ── Metric card formatters (panel-parity display) ────────────────────
-    $fmtNum = static function ($value): string {
-        $rounded = round((float) $value, 1);
-        if (fmod($rounded, 1.0) === 0.0) {
-            return number_format($rounded, 0);
-        }
-
-        return number_format($rounded, 1);
-    };
-    $fmtGb = static function ($bytes) use ($fmtNum): string {
-        return $fmtNum((int) $bytes / 1073741824);
-    };
-    $fmtBandwidth = static function ($bytes) use ($fmtNum): string {
-        $tb = (float) $bytes / (1024 * 1024 * 1024 * 1024);
-        if ($tb >= 1) {
-            return $fmtNum($tb) . ' TB';
-        }
-
-        return $fmtNum((int) $bytes / (1024 * 1024 * 1024)) . ' GB';
-    };
-
-    // Keyed by card id — the template reads $midgardCards.cpu.value etc.
-    // Live values come from the synced vm_stats snapshot; when it is not
-    // available yet the cards fall back to the ALLOCATION (never dashes),
-    // which is still true information.
-    $statsCpu = isset($midgardStats['cpu_percent']) ? (float) $midgardStats['cpu_percent'] : null;
-    $statsMem = isset($midgardStats['mem']) ? (int) $midgardStats['mem'] : null;
-    $statsDisk = isset($midgardStats['disk']) ? (int) $midgardStats['disk'] : null;
-    $statsBw = isset($midgardStats['bandwidth_usage']) ? (int) $midgardStats['bandwidth_usage'] : null;
-
-    $allocCpu = (int) ($midgardSpecs['cpu'] ?? 0);
-    $allocMem = (int) ($midgardSpecs['memory_gb'] ?? 0);
-    $allocDisk = (int) ($midgardSpecs['disk_gb'] ?? 0);
-    $allocBw = (int) ($midgardSpecs['bandwidth_tb'] ?? 0);
-
-    $midgardCards = [
-        'cpu' => [
-            'value' => $statsCpu !== null ? str_replace('.0', '', sprintf('%.1f', $statsCpu)) . '%' : $allocCpu . ' Core(s)',
-            'sub' => $statsCpu !== null ? 'of ' . $allocCpu . ' Core(s)' : 'allocated',
-        ],
-        'memory' => [
-            'value' => ($statsMem !== null && $statsMem > 0) ? $fmtGb($statsMem) . ' / ' . $allocMem . ' GB' : $allocMem . ' GB',
-            'sub' => ($statsMem !== null && $statsMem > 0) ? 'used / allocated' : 'allocated',
-        ],
-        'disk' => [
-            'value' => ($statsDisk !== null && $statsDisk > 0) ? $fmtGb($statsDisk) . ' / ' . $allocDisk . ' GB' : $allocDisk . ' GB',
-            'sub' => ($statsDisk !== null && $statsDisk > 0) ? 'used / allocated' : 'allocated',
-        ],
-        'bandwidth' => [
-            'value' => ($statsBw !== null && $statsBw > 0) ? $fmtBandwidth($statsBw) : '0 GB',
-            'sub' => 'of ' . $allocBw . ' TB',
-        ],
-    ];
 
     $addresses = [];
     if (is_array($meta['midgard_addresses'] ?? null)) {
@@ -1149,7 +1081,6 @@ function midgard_ClientArea(array $params): array
         'midgardAjaxUrl' => $midgardAjaxUrl,
         'midgardCsrf' => $midgardCsrf,
         'midgardServerId' => $midgardServerId,
-        'midgardStats' => $midgardStats,
         'midgardServerName' => $serverName,
         'midgardServiceHostname' => $serviceHostname,
         'midgardPrimaryIpv4' => $primaryIpv4,
@@ -1163,7 +1094,6 @@ function midgard_ClientArea(array $params): array
         'midgardAssignedIps' => $assignedIpsText,
         'midgardAssignedIpsArray' => $assignedIpsArray,
         'midgardServerSpecs' => $midgardSpecs,
-        'midgardCards' => $midgardCards,
         'midgardOsName' => (string) ($meta['midgard_os_name'] ?? ''),
     ];
     logModuleCall('midgard', 'clientArea.responseKeys', [

@@ -40,7 +40,6 @@
 
         /* ── Header ─────────────────────────────────────────────────── */
         .midgard-ca-header { align-items: center; display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; }
-        .midgard-ca-title-wrap { align-items: center; display: flex; gap: 10px; min-width: 0; }
         .midgard-ca-title { color: var(--mg-text); font-size: 18px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.3; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
         /* Status pulse (panel parity) */
@@ -103,18 +102,15 @@
         .midgard-ca-banner.mg-info { background: rgba(99, 102, 241, 0.06); border: 1px solid rgba(99, 102, 241, 0.3); color: var(--mg-indigo-soft); }
         .midgard-ca-banner.mg-show { display: block; }
 
-        /* ── Definition rows ────────────────────────────────────────── */
-        .midgard-ca-rows { display: grid; gap: 0; grid-template-columns: 1fr; margin-top: 20px; }
+        /* ── Server Overview eyebrow ────────────────────────────────── */
+        .midgard-ca-overview { align-items: center; display: flex; gap: 12px; justify-content: space-between; }
+        .midgard-ca-overview-title { color: var(--mg-faint); font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+
+        /* ── Definition rows (2 kolom: kiri identitas, kanan resource) ── */
+        .midgard-ca-rows { display: grid; column-gap: 32px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 14px; row-gap: 0; }
         .midgard-ca-row { align-items: baseline; display: flex; gap: 12px; padding: 7px 0; }
         .midgard-ca-label { color: var(--mg-text); flex: 0 0 88px; font-size: 12.5px; font-weight: 600; letter-spacing: 0.02em; }
         .midgard-ca-value { color: var(--mg-muted); flex: 1; font-size: 13.5px; font-weight: 500; font-variant-numeric: tabular-nums; min-width: 0; word-break: break-word; }
-
-        /* ── Metric cards (single row; wraps to 2x2 on narrow screens) ── */
-        .midgard-ca-cards { display: grid; gap: 12px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 20px; }
-        .midgard-ca-card { background: var(--mg-subtle); border: 1px solid var(--mg-border); border-radius: 10px; padding: 14px 16px; }
-        .midgard-ca-card .mg-card-label { color: var(--mg-text); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
-        .midgard-ca-card .mg-card-value { color: var(--mg-text); font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; margin-top: 6px; }
-        .midgard-ca-card .mg-card-sub { color: var(--mg-faint); font-size: 11.5px; margin-top: 3px; min-height: 15px; }
 
         /* ── Alerts (provisioning) ──────────────────────────────────── */
         .midgard-clientarea .midgard-ca-alert { border-radius: 8px; font-size: 13px; margin-top: 14px; padding: 10px 12px; }
@@ -193,19 +189,22 @@
             .midgard-clientarea.midgard-ca { padding: 16px; }
             .midgard-ca-title { font-size: 16px; }
             .midgard-ca-label { flex-basis: 80px; }
-            .midgard-ca-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .midgard-ca-rows { column-gap: 20px; grid-template-columns: 1fr; }
         }
     </style>
 
-    {* ── Header: name + pulse-dot status + action bar ────────────────── *}
+    {* ── Server Overview eyebrow: title kiri + live status kanan ─────── *}
+    <div class="midgard-ca-overview">
+        <span class="midgard-ca-overview-title">Server Overview</span>
+        <span class="midgard-header-status midgard-status-state-{$midgardRuntimeStatusClass|default:'default'|escape}">
+            <span class="midgard-status-dot" aria-hidden="true"></span>
+            <span class="midgard-status-text">{$midgardRuntimeStatusLabel|default:'Unknown'|escape}</span>
+        </span>
+    </div>
+
+    {* ── Header: name + action bar ───────────────────────────────────── *}
     <div class="midgard-ca-header">
-        <div class="midgard-ca-title-wrap">
-            <h3 class="midgard-ca-title">{$midgardServerName|default:'-'|escape}</h3>
-            <span class="midgard-header-status midgard-status-state-{$midgardRuntimeStatusClass|default:'default'|escape}">
-                <span class="midgard-status-dot" aria-hidden="true"></span>
-                <span class="midgard-status-text">{$midgardRuntimeStatusLabel|default:'Unknown'|escape}</span>
-            </span>
-        </div>
+        <h3 class="midgard-ca-title">{$midgardServerName|default:'-'|escape}</h3>
 
         {if $midgardActionsEnabled}
             <div class="midgard-ca-actions" id="mg-actions">
@@ -233,47 +232,52 @@
 
     <div class="midgard-ca-banner" id="mg-banner" role="status"></div>
 
-    {* ── Definition rows ─────────────────────────────────────────────── *}
+    {* ── Definition rows ─────────────────────────────────────────────── *
+     * Grid 2 kolom, auto-placement mengisi baris-per-baris. Urutan DOM
+     * di-buat sehingga hasil visualnya:
+     *   kolom kiri: Hostname, OS,      CPU, RAM,  Disk
+     *   kolom kanan: IPv4,    IPv6,    Bandwidth, Backup, Snapshot
+     *}
     <div class="midgard-ca-rows">
         <div class="midgard-ca-row">
             <span class="midgard-ca-label">Hostname</span>
             <span class="midgard-ca-value">{$midgardServiceHostname|default:$domain|default:'-'|escape}</span>
         </div>
         <div class="midgard-ca-row">
-            <span class="midgard-ca-label">OS</span>
-            <span class="midgard-ca-value" id="mg-card-os-value">{$midgardOsName|default:'-'|escape}</span>
-        </div>
-        <div class="midgard-ca-row">
             <span class="midgard-ca-label">IPv4</span>
             <span class="midgard-ca-value">{$midgardPrimaryIpv4|default:'-'|escape}</span>
+        </div>
+        <div class="midgard-ca-row">
+            <span class="midgard-ca-label">OS</span>
+            <span class="midgard-ca-value" id="mg-card-os-value">{$midgardOsName|default:'-'|escape}</span>
         </div>
         <div class="midgard-ca-row">
             <span class="midgard-ca-label">IPv6</span>
             <span class="midgard-ca-value">{$midgardPrimaryIpv6|default:'-'|escape}</span>
         </div>
-    </div>
-
-    {* ── Metric cards ────────────────────────────────────────────────── *}
-    <div class="midgard-ca-cards">
-        <div class="midgard-ca-card">
-            <div class="mg-card-label">CPU</div>
-            <div class="mg-card-value" id="mg-card-cpu">{$midgardCards.cpu.value|default:'-'|escape}</div>
-            <div class="mg-card-sub">{$midgardCards.cpu.sub|default:''|escape}</div>
+        <div class="midgard-ca-row">
+            <span class="midgard-ca-label">CPU</span>
+            <span class="midgard-ca-value">{$midgardSpecs.cpu|default:'-'} Core(s)</span>
         </div>
-        <div class="midgard-ca-card">
-            <div class="mg-card-label">Memory</div>
-            <div class="mg-card-value" id="mg-card-memory">{$midgardCards.memory.value|default:'-'|escape}</div>
-            <div class="mg-card-sub">{$midgardCards.memory.sub|default:''|escape}</div>
+        <div class="midgard-ca-row">
+            <span class="midgard-ca-label">Bandwidth</span>
+            <span class="midgard-ca-value">{$midgardSpecs.bandwidth_tb|default:'-'} TB</span>
         </div>
-        <div class="midgard-ca-card">
-            <div class="mg-card-label">Disk</div>
-            <div class="mg-card-value" id="mg-card-disk">{$midgardCards.disk.value|default:'-'|escape}</div>
-            <div class="mg-card-sub">{$midgardCards.disk.sub|default:''|escape}</div>
+        <div class="midgard-ca-row">
+            <span class="midgard-ca-label">RAM</span>
+            <span class="midgard-ca-value">{$midgardSpecs.memory_gb|default:'-'} GB</span>
         </div>
-        <div class="midgard-ca-card">
-            <div class="mg-card-label">Bandwidth</div>
-            <div class="mg-card-value" id="mg-card-bandwidth">{$midgardCards.bandwidth.value|default:'-'|escape}</div>
-            <div class="mg-card-sub">{$midgardCards.bandwidth.sub|default:''|escape}</div>
+        <div class="midgard-ca-row">
+            <span class="midgard-ca-label">Backup Slot</span>
+            <span class="midgard-ca-value">{$midgardSpecs.backup_limit|default:0}</span>
+        </div>
+        <div class="midgard-ca-row">
+            <span class="midgard-ca-label">Disk</span>
+            <span class="midgard-ca-value">{$midgardSpecs.disk_gb|default:'-'} GB</span>
+        </div>
+        <div class="midgard-ca-row">
+            <span class="midgard-ca-label">Snapshot Slot</span>
+            <span class="midgard-ca-value">{$midgardSpecs.snapshot_limit|default:0}</span>
         </div>
     </div>
 
