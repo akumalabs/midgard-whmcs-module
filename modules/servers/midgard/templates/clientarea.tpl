@@ -102,9 +102,9 @@
         .midgard-ca-banner.mg-info { background: rgba(99, 102, 241, 0.06); border: 1px solid rgba(99, 102, 241, 0.3); color: var(--mg-indigo-soft); }
         .midgard-ca-banner.mg-show { display: block; }
 
-        /* ── Server Overview eyebrow ────────────────────────────────── */
-        .midgard-ca-overview { align-items: center; display: flex; gap: 12px; justify-content: space-between; }
-        .midgard-ca-overview-title { color: var(--mg-faint); font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+        /* ── Server Overview header ─────────────────────────────────── */
+        .midgard-ca-overview { align-items: center; display: flex; gap: 12px; justify-content: space-between; margin-bottom: 14px; }
+        .midgard-ca-overview-title { color: var(--mg-text); font-size: 18px; font-weight: 400; letter-spacing: -0.01em; }
 
         /* ── Definition rows (2 kolom: kiri identitas, kanan resource) ── */
         .midgard-ca-rows { display: grid; column-gap: 32px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 14px; row-gap: 0; }
@@ -159,6 +159,8 @@
         }
         .mg-field select:focus, .mg-field input:focus { border-color: var(--mg-indigo); outline: none; }
         .mg-field .mg-hint { color: var(--mg-faint); font-size: 12px; margin-top: 5px; }
+        .mg-opt { color: var(--mg-faint); font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+        .mg-rebuild-grid { column-gap: 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .mg-modal-foot { border-top: 1px solid var(--mg-border); display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; padding-top: 14px; }
         .mg-btn { border: 1px solid var(--mg-border-strong); border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; padding: 9px 16px; }
         .mg-btn-ghost { background: #ffffff; color: var(--mg-muted); }
@@ -301,14 +303,23 @@
 
                 <div id="mg-rebuild-phase-form">
                     <div class="mg-field">
-                        <label for="mg-rebuild-template">Operating system</label>
+                        <label for="mg-rebuild-template">Template</label>
                         <select id="mg-rebuild-template"><option>Loading templates&hellip;</option></select>
                         <div class="mg-hint" id="mg-rebuild-template-hint"></div>
                     </div>
+                    <div class="mg-rebuild-grid">
+                        <div class="mg-field">
+                            <label for="mg-rebuild-name">Server Name</label>
+                            <input type="text" id="mg-rebuild-name" autocomplete="off" value="{$midgardServerName|default:''|escape}" placeholder="Midgard Server" />
+                        </div>
+                        <div class="mg-field">
+                            <label for="mg-rebuild-hostname">Hostname <span class="mg-opt">(Optional)</span></label>
+                            <input type="text" id="mg-rebuild-hostname" autocomplete="off" value="{$midgardServiceHostname|default:''|escape}" placeholder="server.example.com" />
+                        </div>
+                    </div>
                     <div class="mg-field">
-                        <label for="mg-rebuild-password">Root password (optional)</label>
-                        <input type="text" id="mg-rebuild-password" autocomplete="off" placeholder="Leave empty to auto-generate" />
-                        <div class="mg-hint">If left empty, a password is generated and emailed to you.</div>
+                        <label for="mg-rebuild-password">New OS Password <span class="mg-opt">(Optional)</span></label>
+                        <input type="password" id="mg-rebuild-password" autocomplete="new-password" placeholder="Leave blank to keep existing" />
                     </div>
                     <div class="mg-modal-foot">
                         <button type="button" class="mg-btn mg-btn-ghost" id="mg-rebuild-cancel">Cancel</button>
@@ -497,7 +508,6 @@
                 modalOpen = false;
                 $('mg-rebuild-backdrop').className = 'mg-modal-backdrop';
             }
-
             function showPhase(name) {
                 $('mg-rebuild-phase-form').style.display = name === 'form' ? '' : 'none';
                 $('mg-rebuild-phase-progress').style.display = name === 'progress' ? '' : 'none';
@@ -561,7 +571,12 @@
                 lastProgress = 0;
                 renderSteps(0);
                 showPhase('progress');
-                api('rebuild', { os_image_id: templateId, password: $('mg-rebuild-password').value }).then(function () {
+                api('rebuild', {
+                    os_image_id: templateId,
+                    password: $('mg-rebuild-password').value,
+                    name: $('mg-rebuild-name') ? $('mg-rebuild-name').value : '',
+                    hostname: $('mg-rebuild-hostname') ? $('mg-rebuild-hostname').value : ''
+                }).then(function () {
                     pollTimer = setInterval(pollRebuild, 1000);
                 }).catch(function (err) {
                     rebuilding = false;
