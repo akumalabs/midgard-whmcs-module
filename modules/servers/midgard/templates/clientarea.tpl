@@ -170,6 +170,13 @@
 
         /* Rebuild modal is form-only (round 13): checklist/spinner/progress CSS removed. */
 
+        /* ── Rebuild live progress (swaps with the specs grid) ──────── */
+        .mg-rebuild-live { margin-top: 30px; }
+        .mg-rebuild-live-msg { color: var(--mg-text); font-size: 14px; font-weight: 600; }
+        .mg-rebuild-live-track { background: rgba(99, 102, 241, 0.12); border-radius: 999px; height: 8px; margin-top: 12px; overflow: hidden; }
+        .mg-rebuild-live-fill { animation: mg-indeterminate 1.4s ease-in-out infinite; background: linear-gradient(90deg, rgba(99,102,241,0.55), var(--mg-indigo)); border-radius: 999px; height: 100%; width: 40%; }
+        @keyframes mg-indeterminate { 0% { margin-left: -40%; } 100% { margin-left: 100%; } }
+
         @keyframes midgard-pulse-green { 0% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.35); } 70% { box-shadow: 0 0 0 7px rgba(22, 163, 74, 0); } 100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); } }
         @keyframes midgard-pulse-yellow { 0% { box-shadow: 0 0 0 0 rgba(202, 138, 4, 0.35); } 70% { box-shadow: 0 0 0 7px rgba(202, 138, 4, 0); } 100% { box-shadow: 0 0 0 0 rgba(202, 138, 4, 0); } }
         @keyframes midgard-pulse-red { 0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.35); } 70% { box-shadow: 0 0 0 7px rgba(220, 38, 38, 0); } 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); } }
@@ -229,7 +236,7 @@
      *   kolom kiri: VMID, Hostname, CPU, RAM, Disk
      *   kolom kanan: OS, Location, Bandwidth, IPv4, IPv6
      *}
-    <div class="midgard-ca-rows">
+    <div class="midgard-ca-rows" id="mg-specs">
         <div class="midgard-ca-row">
             <span class="midgard-ca-label">VMID</span>
             <span class="midgard-ca-value">{$midgardVmid|default:'-'|escape}</span>
@@ -270,6 +277,12 @@
             <span class="midgard-ca-label">IPv6</span>
             <span class="midgard-ca-value">{$midgardPrimaryIpv6|default:'-'|escape}</span>
         </div>
+    </div>
+
+    {* ── Rebuild progress (swaps in for the specs grid while rebuilding) *}
+    <div class="mg-rebuild-live" id="mg-rebuild-live" style="display: none;">
+        <div class="mg-rebuild-live-msg" id="mg-rebuild-live-msg">Rebuilding your server. This can take several minutes.</div>
+        <div class="mg-rebuild-live-track"><div class="mg-rebuild-live-fill"></div></div>
     </div>
 
     {if $midgardIpv4Missing}
@@ -403,6 +416,8 @@
 
             function setStatus(status) {
                 currentStatus = status;
+                if (TRANSITIONAL.indexOf(status) === -1) { rebuildFlow = false; }
+                syncRebuildLive();
                 var wrap = root.querySelector('.midgard-header-status');
                 if (wrap && status) {
                     var cls = STATUS_CLASSES[status] || 'default';
@@ -518,6 +533,26 @@
                 if (watchTimer) { clearInterval(watchTimer); watchTimer = null; }
             }
 
+            // While rebuilding, the specs grid swaps for a live progress
+            // bar; both return the moment the status settles. `installing`
+            // only counts inside an active rebuild flow (the panel flips
+            // rebuilding→installing mid-task); a bare `rebuilding` (e.g.
+            // right after page load) is enough on its own.
+            var rebuildFlow = false;
+
+            function showRebuildLive(show) {
+                var live = $('mg-rebuild-live');
+                var specs = $('mg-specs');
+                if (live) { live.style.display = show ? '' : 'none'; }
+                if (specs) { specs.style.display = show ? 'none' : ''; }
+            }
+
+            function syncRebuildLive() {
+                var show = currentStatus === 'rebuilding'
+                    || (rebuildFlow && currentStatus === 'installing');
+                showRebuildLive(show);
+            }
+
             function startRebuild() {
                 var templateId = $('mg-rebuild-template').value;
                 if (!templateId || rebuilding) { return; }
@@ -533,6 +568,7 @@
                     // then follows the panel until settled (min 30 s so the
                     // brief "still running" gap right after acceptance
                     // can't stop it prematurely).
+                    rebuildFlow = true;
                     setStatus('rebuilding');
                     startStatusWatcher(6);
                     closeModal(true);
