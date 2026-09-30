@@ -166,8 +166,10 @@ try {
 
             // Live identity + OS from the SAME payload the poll already
             // fetched: a rebuild renames the server and swaps the OS image
-            // (the panel flips os_image_id when the install task completes),
-            // so all three must reach the page WITHOUT a manual reload.
+            // — the panel flips os_image_id at REBUILD-JOB START (see
+            // RebuildServerJob $updateData), so the new OS name appears
+            // exactly when the panel's own UI shows it. All of it reaches
+            // the page WITHOUT a manual reload.
             $liveName = trim((string) ($liveData['name'] ?? ''));
             $liveHostname = trim((string) ($liveData['hostname'] ?? ''));
             $liveOsName = '';
