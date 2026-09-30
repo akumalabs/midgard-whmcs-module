@@ -202,7 +202,7 @@
 
     {* ── Header: name + action bar ───────────────────────────────────── *}
     <div class="midgard-ca-header">
-        <h3 class="midgard-ca-title">{$midgardServerName|default:'-'|escape}</h3>
+        <h3 class="midgard-ca-title" id="mg-server-title">{$midgardServerName|default:'-'|escape}</h3>
 
         {if $midgardActionsEnabled}
             <div class="midgard-ca-actions" id="mg-actions">
@@ -247,7 +247,7 @@
         </div>
         <div class="midgard-ca-row">
             <span class="midgard-ca-label">Hostname</span>
-            <span class="midgard-ca-value">{$midgardServiceHostname|default:$domain|default:'-'|escape}</span>
+            <span class="midgard-ca-value" id="mg-hostname-value">{$midgardServiceHostname|default:$domain|default:'-'|escape}</span>
         </div>
         <div class="midgard-ca-row">
             <span class="midgard-ca-label">Location</span>
@@ -449,6 +449,27 @@
                     if (data.os_name) {
                         var os = $('mg-card-os-value');
                         if (os) { os.textContent = data.os_name; }
+                    }
+                    // Live identity: a rebuild that renamed the server must
+                    // land on the page without a manual reload.
+                    if (data.name) {
+                        var title = $('mg-server-title');
+                        if (title && title.textContent !== data.name) { title.textContent = data.name; }
+                    }
+                    if (data.hostname) {
+                        var hn = $('mg-hostname-value');
+                        if (hn && hn.textContent !== data.hostname) { hn.textContent = data.hostname; }
+                        // Keep the rebuild form's pre-fill fresh too — but
+                        // never clobber fields while the modal is open
+                        // (the user may be mid-edit).
+                        if (!modalOpen) {
+                            var mh = $('mg-rebuild-hostname');
+                            if (mh && mh.value !== data.hostname) { mh.value = data.hostname; }
+                        }
+                    }
+                    if (data.name && !modalOpen) {
+                        var mn = $('mg-rebuild-name');
+                        if (mn && mn.value !== data.name) { mn.value = data.name; }
                     }
                     setButtons();
                 }).catch(function () {

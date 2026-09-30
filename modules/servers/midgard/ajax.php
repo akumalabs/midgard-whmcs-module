@@ -168,6 +168,12 @@ try {
                 (string) ($meta['midgard_runtime_status'] ?? '')
             );
 
+            // Live identity from the same getServer payload: a rebuild with
+            // a new name/hostname must reach the page WITHOUT a manual
+            // reload (title + hostname row update from the poll).
+            $liveName = trim((string) ($live['data']['name'] ?? ''));
+            $liveHostname = trim((string) ($live['data']['hostname'] ?? ''));
+
             if ($liveStatus !== '') {
                 // Persist the EFFECTIVE status so the next full page render
                 // sees the same truth (patchMeta is a targeted single-column
@@ -185,6 +191,8 @@ try {
                 'data' => [
                     'status' => $effective,
                     'os_name' => (string) ($meta['midgard_os_name'] ?? ''),
+                    'name' => $liveName !== '' ? $liveName : (string) ($meta['midgard_server_name'] ?? ''),
+                    'hostname' => $liveHostname !== '' ? $liveHostname : (string) ($meta['midgard_server_hostname'] ?? ''),
                 ],
             ]);
 

@@ -57,6 +57,8 @@ class MetadataStoreClientAreaContractTest extends TestCase
             'midgard_os_name' => 'Debian 13 (Trixie)',
             'midgard_vmid' => '116',
             'midgard_location' => 'Dallas',
+            'midgard_server_name' => 'Debian Test',
+            'midgard_server_hostname' => 'debian-test',
         ]);
 
         $meta = $this->store->get(42);
@@ -67,6 +69,8 @@ class MetadataStoreClientAreaContractTest extends TestCase
         $this->assertSame('145', $meta['midgard_server_id']);
         $this->assertSame('116', $meta['midgard_vmid']);
         $this->assertSame('Dallas', $meta['midgard_location']);
+        $this->assertSame('Debian Test', $meta['midgard_server_name']);
+        $this->assertSame('debian-test', $meta['midgard_server_hostname']);
     }
 
     public function test_schema_creates_client_area_columns(): void
@@ -78,6 +82,8 @@ class MetadataStoreClientAreaContractTest extends TestCase
         $this->assertTrue($schema->hasColumn('mod_midgard_service_meta', 'midgard_os_name'));
         $this->assertTrue($schema->hasColumn('mod_midgard_service_meta', 'midgard_vmid'));
         $this->assertTrue($schema->hasColumn('mod_midgard_service_meta', 'midgard_location'));
+        $this->assertTrue($schema->hasColumn('mod_midgard_service_meta', 'midgard_server_name'));
+        $this->assertTrue($schema->hasColumn('mod_midgard_service_meta', 'midgard_server_hostname'));
     }
 
     public function test_get_defaults_carry_unknown_runtime_status(): void
@@ -89,5 +95,7 @@ class MetadataStoreClientAreaContractTest extends TestCase
         $this->assertSame('', $meta['midgard_os_name']);
         $this->assertSame('', $meta['midgard_vmid']);
         $this->assertSame('', $meta['midgard_location']);
+        $this->assertSame('', $meta['midgard_server_name']);
+        $this->assertSame('', $meta['midgard_server_hostname']);
     }
 }

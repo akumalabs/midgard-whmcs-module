@@ -47,6 +47,8 @@ class MetadataStore implements PasswordDispatchStore
             'midgard_os_name' => (string) ($row->midgard_os_name ?? ''),
             'midgard_vmid' => (string) ($row->midgard_vmid ?? ''),
             'midgard_location' => (string) ($row->midgard_location ?? ''),
+            'midgard_server_name' => (string) ($row->midgard_server_name ?? ''),
+            'midgard_server_hostname' => (string) ($row->midgard_server_hostname ?? ''),
             'midgard_live_cpu' => $this->nullableIntFromRow($row->midgard_live_cpu ?? null),
             'midgard_live_memory' => $this->nullableIntFromRow($row->midgard_live_memory ?? null),
             'midgard_live_disk' => $this->nullableIntFromRow($row->midgard_live_disk ?? null),
@@ -91,6 +93,8 @@ class MetadataStore implements PasswordDispatchStore
             'midgard_os_name' => (string) ($data['midgard_os_name'] ?? ''),
             'midgard_vmid' => (string) ($data['midgard_vmid'] ?? ''),
             'midgard_location' => (string) ($data['midgard_location'] ?? ''),
+            'midgard_server_name' => (string) ($data['midgard_server_name'] ?? ''),
+            'midgard_server_hostname' => (string) ($data['midgard_server_hostname'] ?? ''),
             'updated_at' => date('Y-m-d H:i:s'),
         ];
 
@@ -544,6 +548,8 @@ class MetadataStore implements PasswordDispatchStore
             'midgard_os_name' => '',
             'midgard_vmid' => '',
             'midgard_location' => '',
+            'midgard_server_name' => '',
+            'midgard_server_hostname' => '',
             'midgard_live_cpu' => null,
             'midgard_live_memory' => null,
             'midgard_live_disk' => null,
@@ -600,6 +606,12 @@ class MetadataStore implements PasswordDispatchStore
             },
             'midgard_location' => static function ($table): void {
                 $table->string('midgard_location', 191)->nullable();
+            },
+            'midgard_server_name' => static function ($table): void {
+                $table->string('midgard_server_name', 255)->nullable();
+            },
+            'midgard_server_hostname' => static function ($table): void {
+                $table->string('midgard_server_hostname', 255)->nullable();
             },
             'midgard_welcome_template' => static function ($table): void {
                 $table->string('midgard_welcome_template', 191)->nullable();
