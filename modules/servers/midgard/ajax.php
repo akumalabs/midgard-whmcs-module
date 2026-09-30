@@ -156,10 +156,24 @@ try {
             }
 
             try {
-                $live = $client->getServer($serverId);
-                $liveStatus = strtolower(trim((string) ($live['data']['status'] ?? '')));
+                $liveData = $client->getServer($serverId);
+                $liveData = is_array($liveData['data'] ?? null) ? $liveData['data'] : [];
+                $liveStatus = strtolower(trim((string) ($liveData['status'] ?? '')));
             } catch (\Throwable $ignored) {
                 $liveStatus = '';
+                $liveData = [];
+            }
+
+            // Live identity + OS from the SAME payload the poll already
+            // fetched: a rebuild renames the server and swaps the OS image
+            // (the panel flips os_image_id when the install task completes),
+            // so all three must reach the page WITHOUT a manual reload.
+            $liveName = trim((string) ($liveData['name'] ?? ''));
+            $liveHostname = trim((string) ($liveData['hostname'] ?? ''));
+            $liveOsName = '';
+            $osImage = $liveData['os_image'] ?? null;
+            if (is_array($osImage)) {
+                $liveOsName = trim((string) ($osImage['name'] ?? ''));
             }
 
             $effective = \MidgardWhmcs\SyncService::effectiveRuntimeStatus(
@@ -167,12 +181,6 @@ try {
                 $liveStatus,
                 (string) ($meta['midgard_runtime_status'] ?? '')
             );
-
-            // Live identity from the same getServer payload: a rebuild with
-            // a new name/hostname must reach the page WITHOUT a manual
-            // reload (title + hostname row update from the poll).
-            $liveName = trim((string) ($live['data']['name'] ?? ''));
-            $liveHostname = trim((string) ($live['data']['hostname'] ?? ''));
 
             if ($liveStatus !== '') {
                 // Persist the EFFECTIVE status so the next full page render
@@ -190,7 +198,7 @@ try {
                 'status' => 'ok',
                 'data' => [
                     'status' => $effective,
-                    'os_name' => (string) ($meta['midgard_os_name'] ?? ''),
+                    'os_name' => $liveOsName !== '' ? $liveOsName : (string) ($meta['midgard_os_name'] ?? ''),
                     'name' => $liveName !== '' ? $liveName : (string) ($meta['midgard_server_name'] ?? ''),
                     'hostname' => $liveHostname !== '' ? $liveHostname : (string) ($meta['midgard_server_hostname'] ?? ''),
                 ],
