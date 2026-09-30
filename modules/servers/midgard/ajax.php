@@ -191,8 +191,10 @@ try {
         case 'refresh':
             // Explicit client-triggered resync (used by admin-side tooling;
             // client JS now polls 'status' which refreshes inline).
+            // includeProgress: TRUE — a refresh mid-rebuild must not write
+            // the stale pre-rebuild power status over the task's truth.
             try {
-                \MidgardWhmcs\SyncService::syncFromPanel($params, $store, false);
+                \MidgardWhmcs\SyncService::syncFromPanel($params, $store, true);
             } catch (\Throwable $ignored) {
                 midgard_ajax_respond(502, ['status' => 'error', 'message' => 'Panel sync failed.']);
             }

@@ -972,6 +972,7 @@ function midgard_ClientArea(array $params): array
         'failed'     => 'Failed',
         'error'      => 'Error',
         'installing' => 'Installing',
+        'rebuilding' => 'Rebuilding',
         'suspended'  => 'Suspended',
         default      => $runtimeStatus !== '' ? ucfirst($runtimeStatus) : 'Unknown',
     };
@@ -980,7 +981,8 @@ function midgard_ClientArea(array $params): array
         'stopped'    => 'default',
         'failed',
         'error'      => 'danger',
-        'installing' => 'warning',
+        'installing',
+        'rebuilding' => 'warning',
         'suspended'  => 'suspended',
         default      => 'default',
     };
