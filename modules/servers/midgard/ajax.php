@@ -136,18 +136,35 @@ try {
 
     switch ($action) {
         case 'status':
-            // Cheap: from synced meta, zero panel calls.
+            // LIVE from the panel (not synced meta): the rebuild modal is
+            // gone and the badge is the only rebuild feedback the client
+            // sees, so it must follow the panel in near-real-time.
+            try {
+                $live = $client->getServer($serverId);
+                $liveStatus = strtolower(trim((string) ($live['data']['status'] ?? '')));
+                if ($liveStatus !== '') {
+                    // Persist so the next full page render also sees truth.
+                    try {
+                        \MidgardWhmcs\SyncService::syncFromPanel($params, $store, false);
+                    } catch (\Throwable $ignored) {
+                        // refresh is best-effort; live value already returned
+                    }
+                    $meta = $store->get($serviceId);
+                }
+            } catch (\Throwable $ignored) {
+                $liveStatus = '';
+            }
             midgard_ajax_respond(200, [
                 'status' => 'ok',
                 'data' => [
-                    'status' => (string) ($meta['midgard_runtime_status'] ?? 'unknown'),
+                    'status' => $liveStatus !== '' ? $liveStatus : (string) ($meta['midgard_runtime_status'] ?? 'unknown'),
                     'os_name' => (string) ($meta['midgard_os_name'] ?? ''),
                 ],
             ]);
 
         case 'refresh':
-            // Explicit client-triggered resync (used after transitional
-            // states settle; power/rebuild already refresh inline).
+            // Explicit client-triggered resync (used by admin-side tooling;
+            // client JS now polls 'status' which refreshes inline).
             try {
                 \MidgardWhmcs\SyncService::syncFromPanel($params, $store, false);
             } catch (\Throwable $ignored) {
@@ -190,28 +207,6 @@ try {
             midgard_ajax_respond(200, ['status' => 'ok', 'data' => $eligible]);
 
             // no break — exits inside respond
-
-        case 'progress':
-            $progress = $client->installProgress($serverId);
-            // Live server status rides along so the rebuild modal can keep
-            // the header badge truthful during transitional states without
-            // depending on the (possibly stale) synced meta.
-            $liveStatus = '';
-            try {
-                $live = $client->getServer($serverId);
-                $liveStatus = strtolower(trim((string) ($live['data']['status'] ?? '')));
-            } catch (\Throwable $ignored) {
-                $liveStatus = '';
-            }
-            midgard_ajax_respond(200, [
-                'status' => 'ok',
-                'data' => [
-                    'task_status' => (string) ($progress['status'] ?? ''),
-                    'step' => (string) ($progress['step'] ?? ''),
-                    'progress' => (int) ($progress['progress'] ?? 0),
-                    'server_status' => $liveStatus,
-                ],
-            ]);
 
         case 'power':
             $powerAction = (string) ($_POST['action_param'] ?? '');

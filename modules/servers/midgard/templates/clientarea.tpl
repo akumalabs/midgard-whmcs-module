@@ -108,7 +108,7 @@
         /* ── Definition rows (2 kolom: kiri identitas, kanan resource) ── */
         .midgard-ca-rows { display: grid; column-gap: 32px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 30px; row-gap: 0; }
         .midgard-ca-row { align-items: baseline; display: flex; gap: 12px; padding: 7px 0; }
-        .midgard-ca-label { color: var(--mg-text); flex: 0 0 88px; font-size: 12.5px; font-weight: 600; letter-spacing: 0.02em; }
+        .midgard-ca-label { color: var(--mg-text); flex: 0 0 88px; font-size: 12.5px; font-weight: 700; letter-spacing: 0.02em; }
         .midgard-ca-value { color: var(--mg-text); flex: 1; font-size: 13.5px; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 0; word-break: break-word; }
 
         /* ── Alerts (provisioning) ──────────────────────────────────── */
@@ -168,18 +168,8 @@
         .mg-btn-danger:hover:not(:disabled) { background: var(--mg-danger-hover); }
         .mg-btn:disabled { cursor: not-allowed; opacity: 0.5; }
 
-        /* Rebuild checklist */
-        .mg-checklist { list-style: none; margin: 0; padding: 0; }
-        .mg-check-item { align-items: center; color: var(--mg-faint); display: flex; font-size: 13px; gap: 10px; padding: 7px 0; }
-        .mg-check-item.mg-done, .mg-check-item.mg-active { color: var(--mg-text); }
-        .mg-check-dot { align-items: center; border: 1px solid var(--mg-border-strong); border-radius: 50%; display: inline-flex; flex: 0 0 18px; height: 18px; justify-content: center; width: 18px; }
-        .mg-check-item.mg-done .mg-check-dot { background: rgba(22, 163, 74, 0.1); border-color: var(--mg-success); color: var(--mg-success); }
-        .mg-check-item.mg-active .mg-check-dot { border-color: var(--mg-indigo); }
-        .mg-spinner { animation: mg-spin 0.8s linear infinite; border: 2px solid rgba(99, 102, 241, 0.25); border-radius: 50%; border-top-color: var(--mg-indigo); display: inline-block; height: 13px; width: 13px; }
-        .mg-progress-track { display: none; }
-        .mg-progress-fill { background: var(--mg-indigo); height: 100%; transition: width 0.4s ease; width: 0; }
+        /* Rebuild modal is form-only (round 13): checklist/spinner/progress CSS removed. */
 
-        @keyframes mg-spin { to { transform: rotate(360deg); } }
         @keyframes midgard-pulse-green { 0% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.35); } 70% { box-shadow: 0 0 0 7px rgba(22, 163, 74, 0); } 100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); } }
         @keyframes midgard-pulse-yellow { 0% { box-shadow: 0 0 0 0 rgba(202, 138, 4, 0.35); } 70% { box-shadow: 0 0 0 7px rgba(202, 138, 4, 0); } 100% { box-shadow: 0 0 0 0 rgba(202, 138, 4, 0); } }
         @keyframes midgard-pulse-red { 0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.35); } 70% { box-shadow: 0 0 0 7px rgba(220, 38, 38, 0); } 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); } }
@@ -325,25 +315,6 @@
                         <button type="button" class="mg-btn mg-btn-danger" id="mg-rebuild-confirm" disabled>Rebuild</button>
                     </div>
                 </div>
-
-                <div id="mg-rebuild-phase-progress" style="display: none;">
-                    <ul class="mg-checklist" id="mg-rebuild-steps"></ul>
-                    <div class="mg-progress-track"><div class="mg-progress-fill" id="mg-rebuild-progress"></div></div>
-                </div>
-
-                <div id="mg-rebuild-phase-done" style="display: none;">
-                    <div class="mg-check-item mg-done"><span class="mg-check-dot">&#10003;</span> Rebuild complete.</div>
-                    <div class="mg-modal-foot">
-                        <button type="button" class="mg-btn mg-btn-ghost" id="mg-rebuild-done-close">Close</button>
-                    </div>
-                </div>
-
-                <div id="mg-rebuild-phase-fail" style="display: none;">
-                    <div class="midgard-ca-alert mg-danger" id="mg-rebuild-fail-msg" style="margin-top: 0;">Rebuild failed. Please contact support.</div>
-                    <div class="mg-modal-foot">
-                        <button type="button" class="mg-btn mg-btn-ghost" id="mg-rebuild-fail-close">Close</button>
-                    </div>
-                </div>
             </div>
         </div>
     </div>
@@ -363,7 +334,6 @@
             var STATUS_LABELS = { running: 'RUNNING', stopped: 'STOPPED', suspended: 'SUSPENDED', installing: 'INSTALLING', rebuilding: 'REBUILDING', restoring: 'RESTORING', creating: 'CREATING', deleting: 'DELETING' };
             var STATUS_CLASSES = { running: 'success', stopped: 'default', suspended: 'suspended', installing: 'warning', rebuilding: 'warning', restoring: 'warning', creating: 'warning', deleting: 'danger' };
             var TRANSITIONAL = ['installing', 'rebuilding', 'restoring', 'creating', 'deleting'];
-            var STEPS = ['Stopping server...', 'Deleting server...', 'Installing OS...', 'Configuring resources...', 'Booting server...', 'Finalizing...', 'Complete'];
 
             function $(id) { return document.getElementById(id); }
 
@@ -454,34 +424,18 @@
                     showBanner('error', err.message);
                 }).finally(function () {
                     busy = false;
-                    refreshStatus();
+                    startStatusWatcher(2);
                 });
             }
 
             function refreshStatus() {
-                api('status').then(function (data) {
+                return api('status').then(function (data) {
                     if (data.status && data.status !== 'unknown') { setStatus(data.status); }
                     if (data.os_name) {
                         var os = $('mg-card-os-value');
                         if (os) { os.textContent = data.os_name; }
                     }
-                    if (TRANSITIONAL.indexOf(currentStatus) !== -1) {
-                        if (!refreshTimer) {
-                            refreshTimer = setInterval(function () {
-                                if (refreshTimer && TRANSITIONAL.indexOf(currentStatus) === -1) {
-                                    clearInterval(refreshTimer);
-                                    refreshTimer = null;
-                                    return;
-                                }
-                                api('refresh').then(function (r) {
-                                    if (r.status) { setStatus(r.status); }
-                                }).catch(function () { /* keep polling */ });
-                            }, 15000);
-                        }
-                    } else if (refreshTimer) {
-                        clearInterval(refreshTimer);
-                        refreshTimer = null;
-                    }
+                    setButtons();
                 }).catch(function () {
                     setButtons();
                 });
@@ -490,8 +444,6 @@
             /* ── Rebuild modal ───────────────────────────────────────── */
             var modalOpen = false;
             var templates = [];
-            var pollTimer = null;
-            var refreshTimer = null;
 
             function openModal() {
                 modalOpen = true;
@@ -506,15 +458,13 @@
                 if (rebuilding && !force) { return; }
                 modalOpen = false;
                 rebuilding = false;
-                clearInterval(pollTimer);
-                pollTimer = null;
                 $('mg-rebuild-backdrop').className = 'mg-modal-backdrop';
             }
             function showPhase(name) {
-                $('mg-rebuild-phase-form').style.display = name === 'form' ? '' : 'none';
-                $('mg-rebuild-phase-progress').style.display = name === 'progress' ? '' : 'none';
-                $('mg-rebuild-phase-done').style.display = name === 'done' ? '' : 'none';
-                $('mg-rebuild-phase-fail').style.display = name === 'fail' ? '' : 'none';
+                // The modal is form-only (round 13): feedback lives in the
+                // status badge via the watcher, not in modal phases.
+                if (name !== 'form') { return; }
+                $('mg-rebuild-phase-form').style.display = '';
             }
 
             function loadTemplates() {
@@ -544,119 +494,53 @@
             }
 
             var rebuilding = false;
-            var stepIndex = 0;
-            var lastProgress = 0;
 
-            function renderSteps(activeIdx) {
-                var ul = $('mg-rebuild-steps');
-                ul.innerHTML = '';
-                for (var i = 0; i < STEPS.length; i++) {
-                    var li = document.createElement('li');
-                    var state = i < activeIdx ? 'mg-done' : (i === activeIdx ? 'mg-active' : '');
-                    li.className = 'mg-check-item ' + state;
-                    var dot = document.createElement('span');
-                    dot.className = 'mg-check-dot';
-                    if (i < activeIdx) { dot.innerHTML = '&#10003;'; }
-                    else if (i === activeIdx) { dot.innerHTML = '<span class="mg-spinner"></span>'; }
-                    li.appendChild(dot);
-                    li.appendChild(document.createTextNode(STEPS[i]));
-                    ul.appendChild(li);
-                }
-                $('mg-rebuild-progress').style.width = Math.round((activeIdx / (STEPS.length - 1)) * 100) + '%';
+            // ── Live status watcher ─────────────────────────────────────
+            // The rebuild flow has NO progress modal: after the panel
+            // accepts the rebuild the badge shows REBUILDING and this
+            // watcher follows the PANEL's live status until the server is
+            // settled again. It survives the modal (badge is the feedback).
+            var watchTimer = null;
+
+            function startStatusWatcher(minCycles) {
+                stopStatusWatcher();
+                var remaining = Math.max(Number(minCycles) || 0, 0);
+                watchTimer = setInterval(function () {
+                    refreshStatus();
+                    remaining -= 1;
+                    if (remaining <= 0 && TRANSITIONAL.indexOf(currentStatus) === -1) {
+                        stopStatusWatcher();
+                    }
+                }, 5000);
+            }
+
+            function stopStatusWatcher() {
+                if (watchTimer) { clearInterval(watchTimer); watchTimer = null; }
             }
 
             function startRebuild() {
                 var templateId = $('mg-rebuild-template').value;
                 if (!templateId || rebuilding) { return; }
                 rebuilding = true;
-                stepIndex = 0;
-                lastProgress = 0;
-                renderSteps(0);
-                showPhase('progress');
                 api('rebuild', {
                     os_image_id: templateId,
                     password: $('mg-rebuild-password').value,
                     name: $('mg-rebuild-name') ? $('mg-rebuild-name').value : '',
                     hostname: $('mg-rebuild-hostname') ? $('mg-rebuild-hostname').value : ''
                 }).then(function () {
-                    pollTimer = setInterval(pollRebuild, 1000);
+                    rebuilding = false;
+                    // Optimistically REBUILDING immediately — the watcher
+                    // then follows the panel until settled (min 30 s so the
+                    // brief "still running" gap right after acceptance
+                    // can't stop it prematurely).
+                    setStatus('rebuilding');
+                    startStatusWatcher(6);
+                    closeModal(true);
                 }).catch(function (err) {
                     rebuilding = false;
-                    $('mg-rebuild-fail-msg').textContent = err.message;
-                    showPhase('fail');
+                    closeModal(true);
+                    showBanner('error', err.message || 'Rebuild failed to start.');
                 });
-            }
-
-            function pollRebuild() {
-                Promise.all([
-                    api('status').catch(function () { return {}; }),
-                    api('progress').catch(function () { return {}; })
-                ]).then(function (results) {
-                    var status = results[0].status || null;
-                    var pdata = results[1] || {};
-                    var taskStatus = String(pdata.task_status || '').toLowerCase();
-                    var progress = (pdata.progress !== undefined && pdata.progress !== null)
-                        ? Number(pdata.progress) : null;
-                    var liveStatus = String(pdata.server_status || '').toLowerCase();
-
-                    // Keep the header badge truthful while the rebuild runs
-                    // (panel live status, not the possibly-stale meta).
-                    if (liveStatus && liveStatus !== currentStatus) { setStatus(liveStatus); }
-
-                    // Panel truth: the install task reports COMPLETED — the
-                    // rebuild is done. Close the modal right away (no done
-                    // screen) and refresh so the header reflects reality.
-                    if (taskStatus === 'completed' || (progress !== null && progress >= 100)) {
-                        api('refresh').catch(function () {});
-                        closeModal(true);
-                        return;
-                    }
-
-                    if (taskStatus === 'failed' || taskStatus === 'error') {
-                        finishRebuild(false, 'Rebuild failed on the panel. Please contact support.');
-                        return;
-                    }
-
-                    if (progress !== null && progress > lastProgress) {
-                        lastProgress = progress;
-                    }
-
-                    // Drive the checklist from the LIVE server state: the
-                    // task first stops/destroys the VM, then reinstalls, so
-                    // 'running'/'stopped' early on maps to the pre-install
-                    // steps; once the task owns the server it reports
-                    // transitional statuses (or a running state after boot).
-                    if (status === 'rebuilding' || status === 'installing') {
-                        if (stepIndex < 2) { stepIndex = 2; }
-                        renderSteps(stepIndex);
-                        return;
-                    }
-
-                    if (status === 'running' || status === 'stopped') {
-                        if (lastProgress > 0) {
-                            if (stepIndex < 3) { stepIndex = 3; }
-                        } else {
-                            if (stepIndex < 1) { stepIndex = 1; }
-                        }
-                        renderSteps(stepIndex);
-                        return;
-                    }
-
-                    renderSteps(stepIndex);
-                });
-            }
-
-            function finishRebuild(ok, message) {
-                clearInterval(pollTimer);
-                pollTimer = null;
-                rebuilding = false;
-                if (ok) {
-                    showPhase('done');
-                } else {
-                    $('mg-rebuild-fail-msg').textContent = message || 'Rebuild failed. Please contact support.';
-                    showPhase('fail');
-                }
-                refreshStatus();
             }
 
             /* ── Console (served by the PANEL via SSO) ────────────────── */
@@ -710,13 +594,15 @@
                 $('mg-rebuild-x').addEventListener('click', closeModal);
                 $('mg-rebuild-cancel').addEventListener('click', closeModal);
                 $('mg-rebuild-confirm').addEventListener('click', startRebuild);
-                $('mg-rebuild-done-close').addEventListener('click', function () { closeModal(); });
-                $('mg-rebuild-fail-close').addEventListener('click', function () { closeModal(); refreshStatus(); });
                 $('mg-rebuild-backdrop').addEventListener('click', function (e) {
                     if (e.target === this) { closeModal(); }
                 });
 
-                refreshStatus();
+                // A page (re)loaded mid-rebuild must keep following the
+                // panel too — not only the tab that clicked Rebuild.
+                refreshStatus().then(function () {
+                    if (TRANSITIONAL.indexOf(currentStatus) !== -1) { startStatusWatcher(); }
+                });
             }
 
             /* ── Hide WHMCS-native rows (hostname / primary ip) ─────── */
