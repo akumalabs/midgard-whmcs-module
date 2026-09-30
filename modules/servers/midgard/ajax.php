@@ -139,25 +139,51 @@ try {
             // LIVE from the panel (not synced meta): the rebuild modal is
             // gone and the badge is the only rebuild feedback the client
             // sees, so it must follow the panel in near-real-time.
+            //
+            // Task-first: the install task is the authoritative rebuild
+            // signal. For a short window after acceptance the VM still
+            // reports its OLD power state, so server.status alone would
+            // flash RUNNING mid-rebuild.
+            $taskStatus = '';
+            try {
+                // The progress endpoint returns the task object directly
+                // ({status, step, progress}) — same envelope the
+                // ProvisionStateMapper consumes in syncFromPanel.
+                $progress = $client->installProgress($serverId);
+                $taskStatus = strtolower(trim((string) ($progress['status'] ?? '')));
+            } catch (\Throwable $ignored) {
+                $taskStatus = '';
+            }
+
             try {
                 $live = $client->getServer($serverId);
                 $liveStatus = strtolower(trim((string) ($live['data']['status'] ?? '')));
-                if ($liveStatus !== '') {
-                    // Persist so the next full page render also sees truth.
-                    try {
-                        \MidgardWhmcs\SyncService::syncFromPanel($params, $store, false);
-                    } catch (\Throwable $ignored) {
-                        // refresh is best-effort; live value already returned
-                    }
-                    $meta = $store->get($serviceId);
-                }
             } catch (\Throwable $ignored) {
                 $liveStatus = '';
             }
+
+            $effective = \MidgardWhmcs\SyncService::effectiveRuntimeStatus(
+                $taskStatus,
+                $liveStatus,
+                (string) ($meta['midgard_runtime_status'] ?? '')
+            );
+
+            if ($liveStatus !== '') {
+                // Persist the EFFECTIVE status so the next full page render
+                // sees the same truth (patchMeta is a targeted single-column
+                // write — safe to run alongside syncFromPanel's own upsert).
+                try {
+                    $store->patchMeta($serviceId, ['midgard_runtime_status' => $effective]);
+                } catch (\Throwable $ignored) {
+                    // persistence is best-effort; live value already returned
+                }
+                $meta = $store->get($serviceId);
+            }
+
             midgard_ajax_respond(200, [
                 'status' => 'ok',
                 'data' => [
-                    'status' => $liveStatus !== '' ? $liveStatus : (string) ($meta['midgard_runtime_status'] ?? 'unknown'),
+                    'status' => $effective,
                     'os_name' => (string) ($meta['midgard_os_name'] ?? ''),
                 ],
             ]);
@@ -258,12 +284,16 @@ try {
 
             $client->rebuildServer($serverId, $payload);
 
-            // Mirror the modal flow: mark installing and refresh meta so the
-            // checklist phase has fresh progress on its first poll.
+            // The install task now owns the server. Refresh meta for
+            // os/spec fields WITHOUT letting the still-old server power
+            // status overwrite what the task just made true (a rebuild on
+            // a running VM reports 'running' for several more seconds).
             try {
                 \MidgardWhmcs\SyncService::syncFromPanel($params, $store, true);
+                $store->patchMeta($serviceId, ['midgard_runtime_status' => 'rebuilding']);
             } catch (\Throwable $ignored) {
-                // refresh is cosmetic
+                // refresh is cosmetic; the client badge shows REBUILDING
+                // optimistically either way
             }
 
             logModuleCall('midgard', 'clientarea.ajax.rebuild', [

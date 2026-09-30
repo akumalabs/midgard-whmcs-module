@@ -137,6 +137,7 @@ class MetadataStore implements PasswordDispatchStore
             'midgard_pending_password',
             'midgard_welcome_template',
             'midgard_password_email_sent_at',
+            'midgard_runtime_status',
         ];
 
         $patch = [];

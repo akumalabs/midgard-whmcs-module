@@ -94,7 +94,15 @@ final class SyncService
                 $meta['midgard_live_bandwidth_limit'] = $liveResourceSummary['bandwidth_limit'];
                 $meta['midgard_live_backup_limit'] = $liveResourceSummary['backup_limit'];
                 $meta['midgard_live_snapshot_limit'] = $liveResourceSummary['snapshot_limit'];
-                $meta['midgard_runtime_status'] = self::normalizeRuntimeStatus($serverData['status'] ?? null);
+                // Task-first: an in-flight install task outranks the VM's
+                // (possibly stale) power status, so a rebuild on a running
+                // server cannot write back RUNNING before the task claims
+                // the VM. Terminal/absent tasks defer to the power status.
+                $meta['midgard_runtime_status'] = self::effectiveRuntimeStatus(
+                    (string) ($progressPayload['status'] ?? ''),
+                    self::normalizeRuntimeStatus($serverData['status'] ?? null),
+                    self::normalizeRuntimeStatus($meta['midgard_runtime_status'] ?? 'unknown')
+                );
                 $statsJson = self::extractStatsSnapshot($serverData);
                 if ($statsJson !== null) {
                     $meta['midgard_stats_json'] = $statsJson;
@@ -586,5 +594,45 @@ final class SyncService
         }
 
         return $normalized;
+    }
+
+    /**
+     * Effective client-facing runtime status: the INSTALL TASK is the
+     * authoritative rebuild signal, the server power status is secondary.
+     * Right after a rebuild is accepted the VM still reports its OLD power
+     * state for a while (the task has not claimed it yet), so trusting
+     * server.status alone flashes RUNNING mid-rebuild. Any non-empty task
+     * status that is NOT a terminal value counts as in-flight; whether the
+     * client label reads INSTALLING (first provisioning) or REBUILDING
+     * (re-install of a provisioned server) follows the previous status.
+     *
+     * @return string effective runtime status (lowercased)
+     */
+    public static function effectiveRuntimeStatus(string $taskStatus, string $serverStatus, string $previousStatus = ''): string
+    {
+        $task = strtolower(trim($taskStatus));
+        $server = strtolower(trim($serverStatus));
+        $previous = strtolower(trim($previousStatus));
+
+        $terminal = ['completed', 'ready', 'succeeded', 'success', 'ok', 'failed', 'error', 'cancelled', 'canceled'];
+
+        if ($task !== '' && ! in_array($task, $terminal, true)) {
+            // First-time provisioning keeps the INSTALLING label; anything
+            // else in-flight is a rebuild of an existing server.
+            return $previous === 'installing' ? 'installing' : 'rebuilding';
+        }
+
+        if ($task === 'failed' || $task === 'error') {
+            // The install died: surface the real power state (a failed
+            // install leaves the VM stopped); blank server status falls
+            // back to stopped so the badge never claims RUNNING.
+            return $server !== '' && $server !== 'running' ? $server : 'stopped';
+        }
+
+        if ($server !== '') {
+            return $server;
+        }
+
+        return $previous !== '' ? $previous : 'unknown';
     }
 }
