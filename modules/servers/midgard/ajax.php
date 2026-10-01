@@ -204,6 +204,8 @@ try {
                     'os_name' => $liveOsName !== '' ? $liveOsName : (string) ($meta['midgard_os_name'] ?? ''),
                     'name' => $liveName !== '' ? $liveName : (string) ($meta['midgard_server_name'] ?? ''),
                     'hostname' => $liveHostname !== '' ? $liveHostname : (string) ($meta['midgard_server_hostname'] ?? ''),
+                    'ipv4' => (string) ($meta['midgard_primary_ipv4'] ?? ''),
+                    'ipv6' => (string) ($meta['midgard_primary_ipv6'] ?? ''),
                 ],
             ]);
 

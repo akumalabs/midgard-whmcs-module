@@ -267,7 +267,7 @@
         </div>
         <div class="midgard-ca-row">
             <span class="midgard-ca-label">IPv4</span>
-            <span class="midgard-ca-value">{$midgardPrimaryIpv4|default:'-'|escape}</span>
+            <span class="midgard-ca-value" id="mg-ipv4-value">{$midgardPrimaryIpv4|default:'-'|escape}</span>
         </div>
         <div class="midgard-ca-row">
             <span class="midgard-ca-label">Disk</span>
@@ -275,7 +275,7 @@
         </div>
         <div class="midgard-ca-row">
             <span class="midgard-ca-label">IPv6</span>
-            <span class="midgard-ca-value">{$midgardPrimaryIpv6|default:'-'|escape}</span>
+            <span class="midgard-ca-value" id="mg-ipv6-value">{$midgardPrimaryIpv6|default:'-'|escape}</span>
         </div>
     </div>
 
@@ -455,6 +455,17 @@
                     if (data.name) {
                         var title = $('mg-server-title');
                         if (title && title.textContent !== data.name) { title.textContent = data.name; }
+                    }
+                    // IP rows live-sync from synced meta (rebuilds keep the
+                    // same addresses, but early-create refreshes converge the
+                    // display as soon as meta hydrates).
+                    if (data.ipv4 !== undefined) {
+                        var v4 = $('mg-ipv4-value');
+                        if (v4 && v4.textContent !== data.ipv4) { v4.textContent = data.ipv4 || '-'; }
+                    }
+                    if (data.ipv6 !== undefined) {
+                        var v6 = $('mg-ipv6-value');
+                        if (v6 && v6.textContent !== data.ipv6) { v6.textContent = data.ipv6 || '-'; }
                     }
                     if (data.hostname) {
                         var hn = $('mg-hostname-value');

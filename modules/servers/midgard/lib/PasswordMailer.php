@@ -32,11 +32,33 @@ final class PasswordMailer
         try {
             $templateName = Config::option($params, 'welcome_email_template', 'Midgard Provisioning Credentials');
 
+            $sealed = self::seal($password);
+
+            // Plain-text at rest is NOT acceptable: the dispatch row exists
+            // for durable retry, so the password may sit in this table for
+            // minutes (SMTP outage: hours). If WHMCS encryption is
+            // unavailable, refuse the whole thing: release the claim, log
+            // why, and never write a reversible base64 blob (that is
+            // encoding, not encryption).
+            if (! str_starts_with($sealed, 'enc:')) {
+                // The outer catch releases the claim — keep a single release
+                // point; here we only refuse loudly.
+                if (class_exists(\MidgardWhmcs\DiagnosticLogger::class)) {
+                    \MidgardWhmcs\DiagnosticLogger::log('passwordEmailQueueRefused', [
+                        'serviceid' => $serviceId,
+                    ], ['reason' => 'whmcs_encrypt_unavailable']);
+                }
+
+                throw new \RuntimeException(
+                    'WHMCS encrypt() unavailable — refusing to store credentials unencrypted; credentials email not queued.'
+                );
+            }
+
             // Targeted patch, NOT a full-meta upsert: a concurrent
             // SyncService::syncFromPanel() built from a pre-seal get() would
             // otherwise wipe the just-sealed blob (this store overwrites the
             // whole row on upsert).
-            $patch = ['midgard_pending_password' => self::seal($password)];
+            $patch = ['midgard_pending_password' => $sealed];
             $currentTemplate = trim((string) ($store->get($serviceId)['midgard_welcome_template'] ?? ''));
             if ($currentTemplate !== $templateName) {
                 $patch['midgard_welcome_template'] = $templateName;
@@ -276,12 +298,12 @@ final class PasswordMailer
             return is_string($decrypted) && $decrypted !== '' ? $decrypted : null;
         }
 
-        if (str_starts_with($blob, 'plain:')) {
-            $raw = base64_decode(substr($blob, 6), true);
-
-            return is_string($raw) && $raw !== '' ? $raw : null;
-        }
-
+        // Legacy 'plain:' blobs (the removed base64 fallback) are no longer
+        // readable — deprecated 2026-10-01, Master-locked: a password that
+        // sat unencrypted in metadata is treated as compromised and never
+        // reused. The stale blob is wiped by the next send's targeted clear
+        // (or the dispatch row ages out); the caller reports the standard
+        // sealed-missing error and the row stays queued for a manual re-arm.
         return null;
     }
 

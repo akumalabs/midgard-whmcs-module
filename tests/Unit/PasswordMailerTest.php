@@ -280,11 +280,36 @@ namespace MidgardWhmcs\Tests\Unit {
             $this->assertSame('dispatch-hash', $store->queued[0]);
             $this->assertSame('Midgard Provisioning Credentials', $store->meta['midgard_welcome_template'] ?? '');
 
-            // encrypt()/decrypt() are undefined in the test environment, so
-            // the seal must fall back to the reversible 'plain:' prefix.
+            // The seal MUST be the WHMCS-encrypted form (shim provides
+            // encrypt()/decrypt()); base64-only storage is Master-forbidden
+            // (2026-10-01): the password may sit at rest through SMTP outages.
             $sealed = (string) ($store->meta['midgard_pending_password'] ?? '');
-            $this->assertStringStartsWith('plain:', $sealed);
-            $this->assertSame('QueuedPass123!', base64_decode(substr($sealed, 6), true));
+            $this->assertStringStartsWith('enc:', $sealed);
+            $this->assertSame('WHMCS-ENC::QueuedPass123!', base64_decode(substr($sealed, 4), true));
+        }
+
+        public function test_queue_refuses_to_persist_unencrypted_without_whmcs_encryption(): void
+        {
+            // Simulate a WHMCS cipher that does not work: the queue must
+            // refuse entirely — claim released, nothing sealed, nothing
+            // queued. A reversible base64 blob at rest is Master-forbidden.
+            require_once __DIR__.'/shim/disable_whmcs_encryption.php';
+            $store = new FakeMetadataStore();
+
+            try {
+                try {
+                    PasswordMailer::queue(['serviceid' => 78, 'userid' => 89], $store, 'uuid-78', 'NoEncrypt1!');
+                    $this->fail('Expected RuntimeException');
+                } catch (\RuntimeException $e) {
+                    $this->assertStringContainsString('encrypt() unavailable', $e->getMessage());
+                }
+
+                $this->assertCount(1, $store->released, 'the claim must be released on refusal');
+                $this->assertCount(0, $store->queued, 'nothing may be queued for the cron worker');
+                $this->assertSame('', $store->meta['midgard_pending_password'] ?? '', 'no password blob may be persisted');
+            } finally {
+                unset($GLOBALS['__WHMCS_ENCRYPT_DISABLED']);
+            }
         }
 
         public function test_queue_is_noop_when_dispatch_already_claimed(): void
@@ -306,7 +331,7 @@ namespace MidgardWhmcs\Tests\Unit {
         {
             $store = new FakeMetadataStore();
             $store->setMeta([
-                'midgard_pending_password' => 'plain:' . base64_encode('SealedSecret1!'),
+                'midgard_pending_password' => 'enc:'.base64_encode('WHMCS-ENC::SealedSecret1!'),
                 'midgard_welcome_template' => 'Midgard Provisioning Credentials',
             ]);
 
@@ -334,7 +359,7 @@ namespace MidgardWhmcs\Tests\Unit {
         {
             $store = new FakeMetadataStore();
             $store->setMeta([
-                'midgard_pending_password' => 'plain:' . base64_encode('RetryPass1!'),
+                'midgard_pending_password' => 'enc:'.base64_encode('WHMCS-ENC::RetryPass1!'),
             ]);
             PasswordMailerLocalApiSpy::$responses = [
                 ['result' => 'error', 'message' => 'SMTP timeout'],
@@ -358,8 +383,8 @@ namespace MidgardWhmcs\Tests\Unit {
             // queued (released stays empty) so the next cron run retries.
             $this->assertCount(0, $store->finalized);
             $this->assertCount(0, $store->released);
-            $this->assertSame('RetryPass1!', base64_decode(
-                substr((string) ($store->meta['midgard_pending_password'] ?? ''), 6),
+            $this->assertSame('WHMCS-ENC::RetryPass1!', base64_decode(
+                substr((string) ($store->meta['midgard_pending_password'] ?? ''), 4),
                 true
             ));
         }
