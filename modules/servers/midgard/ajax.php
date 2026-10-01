@@ -181,7 +181,8 @@ try {
             $effective = \MidgardWhmcs\SyncService::effectiveRuntimeStatus(
                 $taskStatus,
                 $liveStatus,
-                (string) ($meta['midgard_runtime_status'] ?? '')
+                (string) ($meta['midgard_runtime_status'] ?? ''),
+                strtolower(trim((string) ($meta['midgard_provision_state'] ?? '')))
             );
 
             if ($liveStatus !== '') {

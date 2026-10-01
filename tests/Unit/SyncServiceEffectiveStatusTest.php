@@ -54,6 +54,21 @@ final class SyncServiceEffectiveStatusTest extends TestCase
         $this->assertSame('rebuilding', SyncService::effectiveRuntimeStatus('installing', 'running', 'running'));
     }
 
+    public function test_brand_new_create_is_installing_not_rebuilding(): void
+    {
+        // Live fit-and-proper finding 2026-10-01: a fresh create had empty
+        // runtime meta, so the previous-status discriminator mislabelled the
+        // FIRST install as REBUILDING. midgard_provision_state (MetadataStore
+        // default 'installing' at create, 'ready' after first completion) is
+        // the real lifecycle signal; previous runtime stays the BC fallback.
+        $this->assertSame('installing', SyncService::effectiveRuntimeStatus('installing', 'stopped', '', 'installing'));
+        $this->assertSame('installing', SyncService::effectiveRuntimeStatus('installing', 'running', 'unknown', 'installing'));
+        // A rebuild of a settled server stays REBUILDING (state never
+        // returns to 'installing' once the first build completed).
+        $this->assertSame('rebuilding', SyncService::effectiveRuntimeStatus('installing', 'running', 'running', 'ready'));
+        $this->assertSame('rebuilding', SyncService::effectiveRuntimeStatus('installing', 'stopped', 'stopped', 'ready'));
+    }
+
     public function test_blank_server_status_keeps_previous_settled_state(): void
     {
         $this->assertSame('running', SyncService::effectiveRuntimeStatus('', '', 'running'));

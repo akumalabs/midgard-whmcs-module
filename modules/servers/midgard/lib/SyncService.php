@@ -101,7 +101,8 @@ final class SyncService
                 $meta['midgard_runtime_status'] = self::effectiveRuntimeStatus(
                     (string) ($progressPayload['status'] ?? ''),
                     self::normalizeRuntimeStatus($serverData['status'] ?? null),
-                    self::normalizeRuntimeStatus($meta['midgard_runtime_status'] ?? 'unknown')
+                    self::normalizeRuntimeStatus($meta['midgard_runtime_status'] ?? 'unknown'),
+                    strtolower(trim((string) ($meta['midgard_provision_state'] ?? '')))
                 );
                 $statsJson = self::extractStatsSnapshot($serverData);
                 if ($statsJson !== null) {
@@ -608,8 +609,12 @@ final class SyncService
      *
      * @return string effective runtime status (lowercased)
      */
-    public static function effectiveRuntimeStatus(string $taskStatus, string $serverStatus, string $previousStatus = ''): string
-    {
+    public static function effectiveRuntimeStatus(
+        string $taskStatus,
+        string $serverStatus,
+        string $previousStatus = '',
+        string $provisionState = ''
+    ): string {
         $task = strtolower(trim($taskStatus));
         $server = strtolower(trim($serverStatus));
         $previous = strtolower(trim($previousStatus));
@@ -618,8 +623,20 @@ final class SyncService
 
         if ($task !== '' && ! in_array($task, $terminal, true)) {
             // First-time provisioning keeps the INSTALLING label; anything
-            // else in-flight is a rebuild of an existing server.
-            return $previous === 'installing' ? 'installing' : 'rebuilding';
+            // else in-flight is a rebuild of an existing server. The
+            // midgard_provision_state column is the lifecycle discriminator
+            // (default 'installing' at create, 'ready' after the first
+            // completion — a rebuild never returns to 'installing'); the
+            // previous runtime status stays as the BC fallback for callers
+            // that do not pass the column. Live-fit finding 2026-10-01: a
+            // brand-new create had empty runtime meta ('unknown' fallback)
+            // and was labelled REBUILDING.
+            if ($provisionState === 'installing'
+                || ($provisionState === '' && $previous === 'installing')) {
+                return 'installing';
+            }
+
+            return 'rebuilding';
         }
 
         if ($task === 'failed' || $task === 'error') {
