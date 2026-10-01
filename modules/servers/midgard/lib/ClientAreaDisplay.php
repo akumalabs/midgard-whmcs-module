@@ -15,8 +15,15 @@ use Illuminate\Database\Capsule\Manager as Capsule;
  * data on the same page. The DATABASE columns stay live — admins keep
  * product details + search-by-IP in the admin service lists.
  *
- * Scope: only services whose product servertype = 'midgard'. Only the
- * display variables of the client area page; nothing in the DB is touched.
+ * CONTRACT (learned the hard way, 2026-10-02): ClientAreaPage* hook
+ * responses are MERGED into the template variables — a key absent from the
+ * returned array keeps its original value, so unset() here is a silent
+ * no-op and the row still renders. Removal works by OVERRIDING the keys
+ * with an empty string: the six-style templates guard the rows with
+ * {if $dedicatedip} / {if $assignedips}, so '' hides them.
+ *
+ * Scope: only services whose product servertype = 'midgard'. Nothing in
+ * the DB is touched.
  */
 final class ClientAreaDisplay
 {
@@ -26,19 +33,17 @@ final class ClientAreaDisplay
     /**
      * @param array<string, mixed> $vars Template variables for the page.
      *
-     * @return array<string, mixed> Variables with midgard native IP rows removed.
+     * @return array<string, mixed> Overrides that blank the midgard native IP rows.
      */
     public static function filterProductDetailsVars(array $vars): array
     {
         if (! self::isMidgardServiceContext($vars)) {
-            return $vars;
+            return [];
         }
 
-        foreach (self::HIDDEN_DISPLAY_VARS as $key) {
-            unset($vars[$key]);
-        }
-
-        return $vars;
+        // Merge semantics: returning '' OVERRIDES the template var (unset
+        // would leave the original value in place and the row visible).
+        return array_fill_keys(self::HIDDEN_DISPLAY_VARS, '');
     }
 
     /**
@@ -49,15 +54,19 @@ final class ClientAreaDisplay
      */
     private static function isMidgardServiceContext(array $vars): bool
     {
-        $serviceId = (int) ($vars['serviceid'] ?? 0);
-        if ($serviceId <= 0) {
+        $candidates = array_values(array_filter(array_unique(array_map(
+            static fn ($key): int => (int) ($vars[$key] ?? 0),
+            ['serviceid', 'id', 'relid']
+        )), static fn (int $id): bool => $id > 0));
+
+        if ($candidates === []) {
             return false;
         }
 
         return Capsule::table('tblhosting')
             ->leftJoin('tblproducts', 'tblproducts.id', '=', 'tblhosting.packageid')
             ->where('tblproducts.servertype', 'midgard')
-            ->where('tblhosting.id', $serviceId)
+            ->whereIn('tblhosting.id', $candidates)
             ->exists();
     }
 }

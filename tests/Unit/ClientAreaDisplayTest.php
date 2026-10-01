@@ -16,6 +16,11 @@ use PHPUnit\Framework\TestCase;
  * The DB columns themselves are never modified — admin visibility and
  * search-by-IP depend on them.
  *
+ * CONTRACT: ClientAreaPage* hook responses are MERGED into the template
+ * vars. So the filter must return OVERRIDES ('' for each hidden key) —
+ * an unset() would be a silent no-op (live-verified 2026-10-02: the row
+ * still rendered). The merge-simulation test below pins exactly that.
+ *
  * @covers \MidgardWhmcs\ClientAreaDisplay
  */
 final class ClientAreaDisplayTest extends TestCase
@@ -42,7 +47,7 @@ final class ClientAreaDisplayTest extends TestCase
         });
     }
 
-    public function test_midgard_service_has_native_ip_display_vars_removed(): void
+    public function test_midgard_service_returns_empty_overrides_for_both_ip_vars(): void
     {
         Capsule::table('tblproducts')->insert(['id' => 7, 'servertype' => 'midgard']);
         Capsule::table('tblhosting')->insert([
@@ -53,21 +58,63 @@ final class ClientAreaDisplayTest extends TestCase
             'assignedips' => '2a02:1::5/64',
         ]);
 
-        $filtered = ClientAreaDisplay::filterProductDetailsVars([
+        $overrides = ClientAreaDisplay::filterProductDetailsVars([
+            'serviceid' => 42,
+            'dedicatedip' => '103.1.2.3',
+            'assignedips' => '2a02:1::5/64',
+        ]);
+
+        $this->assertSame(['dedicatedip' => '', 'assignedips' => ''], $overrides);
+    }
+
+    /**
+     * THE regression test for the live failure: WHMCS merges the hook
+     * result into the template vars, so after the merge both IP vars must
+     * be '' — six-style templates guard the rows with {if $var}, hiding them.
+     */
+    public function test_whmcs_merge_semantics_result_in_blank_rows(): void
+    {
+        Capsule::table('tblproducts')->insert(['id' => 7, 'servertype' => 'midgard']);
+        Capsule::table('tblhosting')->insert([
+            'id' => 42,
+            'userid' => 3,
+            'packageid' => 7,
+            'dedicatedip' => '103.1.2.3',
+            'assignedips' => '2a02:1::5/64',
+        ]);
+
+        $templateVars = [
             'serviceid' => 42,
             'dedicatedip' => '103.1.2.3',
             'assignedips' => '2a02:1::5/64',
             'domain' => 'example.com',
-            'username' => 'user42',
-        ]);
+        ];
 
-        $this->assertArrayNotHasKey('dedicatedip', $filtered);
-        $this->assertArrayNotHasKey('assignedips', $filtered);
-        $this->assertSame('example.com', $filtered['domain'], 'unrelated vars must survive');
-        $this->assertSame('user42', $filtered['username'], 'unrelated vars must survive');
+        // Exactly what WHMCS does with a ClientAreaPage* hook response:
+        $merged = array_merge($templateVars, ClientAreaDisplay::filterProductDetailsVars($templateVars));
+
+        $this->assertSame('', $merged['dedicatedip'], 'row guard {if $dedicatedip} must go falsy');
+        $this->assertSame('', $merged['assignedips'], 'row guard {if $assignedips} must go falsy');
+        $this->assertSame('example.com', $merged['domain'], 'unrelated vars must survive');
     }
 
-    public function test_non_midgard_service_is_passed_through_untouched(): void
+    public function test_service_id_is_also_resolved_from_id_key(): void
+    {
+        Capsule::table('tblproducts')->insert(['id' => 7, 'servertype' => 'midgard']);
+        Capsule::table('tblhosting')->insert([
+            'id' => 55,
+            'userid' => 3,
+            'packageid' => 7,
+            'dedicatedip' => '103.1.2.6',
+            'assignedips' => '',
+        ]);
+
+        $overrides = ClientAreaDisplay::filterProductDetailsVars(['id' => 55]);
+
+        $this->assertSame(['dedicatedip' => '', 'assignedips' => ''], $overrides);
+    }
+
+    public function test_non_midgard_service_returns_no_overrides(): void
     {
         Capsule::table('tblproducts')->insert(['id' => 9, 'servertype' => 'cpanel']);
         Capsule::table('tblhosting')->insert([
@@ -78,27 +125,17 @@ final class ClientAreaDisplayTest extends TestCase
             'assignedips' => '',
         ]);
 
-        $vars = [
-            'serviceid' => 43,
-            'dedicatedip' => '103.1.2.4',
-            'assignedips' => '',
-        ];
-
-        $this->assertSame($vars, ClientAreaDisplay::filterProductDetailsVars($vars));
+        $this->assertSame([], ClientAreaDisplay::filterProductDetailsVars(['serviceid' => 43]));
     }
 
-    public function test_unknown_service_id_is_passed_through_untouched(): void
+    public function test_unknown_service_id_returns_no_overrides(): void
     {
-        $vars = ['serviceid' => 999999, 'dedicatedip' => '1.2.3.4'];
-
-        $this->assertSame($vars, ClientAreaDisplay::filterProductDetailsVars($vars));
+        $this->assertSame([], ClientAreaDisplay::filterProductDetailsVars(['serviceid' => 999999]));
     }
 
-    public function test_missing_service_id_is_passed_through_untouched(): void
+    public function test_missing_service_id_returns_no_overrides(): void
     {
-        $vars = ['dedicatedip' => '1.2.3.4', 'assignedips' => 'a::1'];
-
-        $this->assertSame($vars, ClientAreaDisplay::filterProductDetailsVars($vars));
+        $this->assertSame([], ClientAreaDisplay::filterProductDetailsVars(['dedicatedip' => '1.2.3.4']));
     }
 
     public function test_db_columns_are_never_written(): void
@@ -115,7 +152,7 @@ final class ClientAreaDisplayTest extends TestCase
         ClientAreaDisplay::filterProductDetailsVars([
             'serviceid' => 44,
             'dedicatedip' => '103.9.9.9',
-            'assignedips' => '2a02:9::1/64',
+            'assignedips' => '2a02:9::9/64',
         ]);
 
         $row = Capsule::table('tblhosting')->where('id', 44)->first();
