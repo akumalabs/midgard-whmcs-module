@@ -195,6 +195,44 @@ final class EventDispatchTest extends TestCase
         $this->assertSame('running', $meta['midgard_runtime_status']);
     }
 
+    /**
+     * Master-locked contract (2026-10-01): a rebuild NEVER mails credentials.
+     * Even a stuck UNSENT create-email row stays owned by the cron drain
+     * alone — the rebuild-completed event must not flush it (the sealed
+     * password is the PRE-rebuild one and may no longer be valid).
+     */
+    public function test_rebuild_completed_never_touches_pending_email_dispatch(): void
+    {
+        $this->seedService(64, 904);
+
+        Capsule::table('mod_midgard_email_dispatch')->insert([
+            'dispatch_hash' => 'hash-stuck-create-email',
+            'service_id' => 64,
+            'server_uuid' => 'uuid-904',
+            'sent_at' => null,
+            'queued_at' => '2026-10-01 00:00:00',
+            'created_at' => '2026-10-01 00:00:00',
+        ]);
+
+        $status = (new \MidgardWhmcs\RebuildCompletedHandler())->handle([
+            'server_id' => 904,
+            'name' => 'renamed',
+            'hostname' => 'renamed.example.com',
+            'os_image' => ['id' => 5, 'name' => 'AlmaLinux 9'],
+            'status' => 'running',
+        ]);
+
+        $this->assertSame('synced', $status);
+
+        $row = Capsule::table('mod_midgard_email_dispatch')
+            ->where('dispatch_hash', 'hash-stuck-create-email')
+            ->first();
+
+        $this->assertNotNull($row);
+        $this->assertNull($row->sent_at, 'rebuild must not send (or mark sent) a pending credentials email');
+        $this->assertSame('2026-10-01 00:00:00', $row->queued_at, 'the pending row must be left exactly as the cron drain owns it');
+    }
+
     public function test_unknown_event_is_acknowledged_not_processed(): void
     {
         $this->seedService(64, 904);

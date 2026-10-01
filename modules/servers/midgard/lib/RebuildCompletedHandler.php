@@ -19,11 +19,13 @@ use Illuminate\Database\Capsule\Manager as Capsule;
  * keys — every key written here is already registered in MetadataStore
  * (get/upsert/defaults/ensureMetaColumns) and written by SyncService.
  *
- * Email contract preserved: a rebuild NEVER mails credentials unless the
- * operator explicitly reset the password during rebuild (a sealed, queued
- * dispatch row exists for this service) — then, and only then, the pending
- * row is flushed through the exact same live gate + mailer path as the
- * cron safety net.
+ * Email contract (locked by Master, 2026-10-01): a rebuild NEVER mails
+ * credentials, ever. On create the password is system-generated (the email
+ * is the only channel that carries it); on rebuild the password — if the
+ * operator set one at all — was typed by that same operator, and a blank
+ * field keeps the existing one. This handler therefore does NOT touch the
+ * email dispatch table in any way; pending create-email rows (if any) stay
+ * owned by the cron drain alone.
  */
 final class RebuildCompletedHandler
 {
@@ -57,8 +59,6 @@ final class RebuildCompletedHandler
             $osName = trim((string) ($data['os_image']['name'] ?? ''));
         }
 
-        $flushStatuses = [];
-
         foreach ($serviceIds as $serviceId) {
             $meta = $store->get($serviceId);
             if (trim((string) ($meta['midgard_server_id'] ?? '')) === '') {
@@ -84,23 +84,6 @@ final class RebuildCompletedHandler
             $meta['midgard_runtime_status'] = (string) ($data['status'] ?? 'running');
 
             $store->upsert($serviceId, $meta);
-
-            // Optional credentials flush: only when a sealed dispatch row is
-            // pending for this service (rebuild WITH new password). Pure
-            // no-op otherwise — the legacy 'not ready' path is NOT treated
-            // as an error here.
-            $dispatchPending = Capsule::table('mod_midgard_email_dispatch')
-                ->where('service_id', $serviceId)
-                ->whereNull('sent_at')
-                ->exists();
-
-            if ($dispatchPending) {
-                $flushStatuses[] = (new CallbackHandler())->flushPendingCredentials($serviceId);
-            }
-        }
-
-        if (in_array('sent', $flushStatuses, true)) {
-            return 'sent';
         }
 
         return 'synced';
