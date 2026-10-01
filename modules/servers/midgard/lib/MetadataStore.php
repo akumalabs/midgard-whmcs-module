@@ -275,6 +275,17 @@ class MetadataStore implements PasswordDispatchStore
             ->all();
     }
 
+    public function pendingPasswordDispatchCount(): int
+    {
+        $this->ensureSchema();
+
+        return (int) Capsule::table(self::EMAIL_TABLE)
+            ->whereNull('sent_at')
+            ->whereNotNull('queued_at')
+            ->where('queue_attempts', '<', 5)
+            ->count();
+    }
+
     public function incrementPasswordDispatchAttempts(string $dispatchHash): void
     {
         $this->ensureSchema();
@@ -291,6 +302,22 @@ class MetadataStore implements PasswordDispatchStore
         Capsule::table(self::EMAIL_TABLE)
             ->where('dispatch_hash', $dispatchHash)
             ->update(['last_error' => mb_substr($message, 0, 255)]);
+    }
+
+    /**
+     * Delete sent dispatch rows older than $days (scaling plan v2 Fase 4.4).
+     * Local-only and free — called from the cron hook so the async email
+     * queue table can never grow unbounded. Returns the affected row count.
+     */
+    public static function pruneSentEmailDispatches(int $days = 90): int
+    {
+        $store = new self();
+        $store->ensureSchema();
+
+        return (int) Capsule::table(self::EMAIL_TABLE)
+            ->whereNotNull('sent_at')
+            ->where('sent_at', '<', date('Y-m-d H:i:s', time() - ($days * 86400)))
+            ->delete();
     }
 
     /**

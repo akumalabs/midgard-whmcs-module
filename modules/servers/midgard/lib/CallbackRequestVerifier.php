@@ -27,6 +27,18 @@ final class CallbackRequestVerifier
     public const EXPECTED_EVENT = 'server.build.completed';
 
     /**
+     * Event family accepted by this install (scaling plan v2 Fase 2).
+     * Anything outside this list is ACKNOWLEDGED with 200 but NOT processed —
+     * the panel must never retry-spam an older module for events it does not
+     * know (deploy-order safety, both directions).
+     */
+    public const KNOWN_EVENTS = [
+        self::EXPECTED_EVENT,
+        'server.build.failed',
+        'server.rebuild.completed',
+    ];
+
+    /**
      * Recompute the expected HMAC signature (hex, no prefix).
      */
     public static function computeSignature(string $timestamp, string $rawBody, string $secret): string
@@ -98,16 +110,16 @@ final class CallbackRequestVerifier
         }
 
         $event = strtolower(trim((string) ($decoded['event'] ?? '')));
-        if ($event !== self::EXPECTED_EVENT) {
-            return ['ok' => false, 'error' => 'unexpected event', 'data' => []];
+        if (! in_array($event, self::KNOWN_EVENTS, true)) {
+            return ['ok' => false, 'error' => 'unexpected event', 'data' => [], 'event' => $event];
         }
 
         $data = $decoded['data'] ?? null;
         if (! is_array($data) || (int) ($data['server_id'] ?? 0) <= 0) {
-            return ['ok' => false, 'error' => 'missing server_id', 'data' => []];
+            return ['ok' => false, 'error' => 'missing server_id', 'data' => [], 'event' => $event];
         }
 
-        return ['ok' => true, 'error' => '', 'data' => $data];
+        return ['ok' => true, 'error' => '', 'data' => $data, 'event' => $event];
     }
 
     /**

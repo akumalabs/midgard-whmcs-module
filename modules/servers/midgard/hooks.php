@@ -93,7 +93,13 @@ function midgard_cronFlushQueuedPasswordEmails(): void
     $store = new MetadataStore();
 
     try {
-        $pending = $store->pendingPasswordDispatches(10);
+        // Continuous drain (scaling plan v2 Fase 4): batch size follows the
+        // backlog — small backlogs keep the legacy 10-row behavior, big
+        // backlogs drain up to 100/tick (≈0,3 email/s SMTP ceiling). No
+        // threshold, no setting: batch = min(max(count, 10), 100).
+        $count = $store->pendingPasswordDispatchCount();
+        $batch = min(max($count, 10), 100);
+        $pending = $store->pendingPasswordDispatches($batch);
     } catch (\Throwable $e) {
         logModuleCall('midgard', 'cronPasswordEmailFlush', [], 'queue read failed: ' . $e->getMessage(), null, []);
         return;
@@ -179,64 +185,26 @@ function midgard_cronFlushQueuedPasswordEmails(): void
     }
 }
 
-/**
- * Legacy cron duty: keep panel metadata (state, IPs) fresh for every
- * Midgard service.
- */
-function midgard_cronSyncAllServices(): void
-{
-    $store = new MetadataStore();
-
-    $services = Capsule::table('tblhosting')
-        ->leftJoin('tblclients', 'tblclients.id', '=', 'tblhosting.userid')
-        ->leftJoin('tblservers', 'tblservers.id', '=', 'tblhosting.server')
-        ->leftJoin('tblproducts', 'tblproducts.id', '=', 'tblhosting.packageid')
-        ->where('tblproducts.servertype', 'midgard')
-        ->whereIn('tblhosting.domainstatus', ['Active', 'Pending', 'Suspended'])
-        ->select([
-            'tblhosting.id as serviceid',
-            'tblhosting.userid as userid',
-            'tblclients.email as email',
-            'tblservers.hostname as serverhostname',
-            'tblservers.accesshash as serveraccesshash',
-            'tblservers.password as serverpassword',
-        ])
-        ->get();
-
-    foreach ($services as $service) {
-        $params = [
-            'serviceid' => (int) ($service->serviceid ?? 0),
-            'userid' => (int) ($service->userid ?? 0),
-            'serverhostname' => (string) ($service->serverhostname ?? ''),
-            'serveraccesshash' => (string) ($service->serveraccesshash ?? ''),
-            'serverpassword' => (string) ($service->serverpassword ?? ''),
-            'clientsdetails' => [
-                'email' => (string) ($service->email ?? ''),
-            ],
-        ];
-
-        if ($params['serviceid'] <= 0 || trim($params['serverhostname']) === '') {
-            continue;
-        }
-
-        try {
-            SyncService::syncFromPanel($params, $store);
-        } catch (\Throwable $e) {
-            logModuleCall(
-                'midgard',
-                'cronSync',
-                ['serviceid' => $params['serviceid']],
-                $e->getMessage(),
-                null,
-                []
-            );
-        }
-    }
-}
-
 add_hook('AfterCronJob', 1, function (): void {
     midgard_cronFlushQueuedPasswordEmails();
-    midgard_cronSyncAllServices();
+
+    // Auto-prune (scaling plan v2 Fase 4.4): local-only, zero HTTP. Sent
+    // dispatch rows older than 90 days leave the table — keeps the async
+    // email queue tiny without any retention setting.
+    try {
+        \MidgardWhmcs\MetadataStore::pruneSentEmailDispatches(90);
+    } catch (\Throwable $e) {
+        logModuleCall('midgard', 'pruneDispatches', [], $e->getMessage(), null, []);
+    }
+
+    // Hybrid reconciliation (scaling plan v2 Fase 3): suspects first, then a
+    // budget-bounded oldest-first sweep. Replaces the legacy full-loop sync
+    // (every service, every tick) — steady state costs ZERO HTTP calls.
+    try {
+        (new \MidgardWhmcs\ReconcileEngine())->run(new MetadataStore());
+    } catch (\Throwable $e) {
+        logModuleCall('midgard', 'reconcileTick', [], $e->getMessage(), null, []);
+    }
 });
 
 add_hook('EmailPreSend', 1, function (array $vars): array {

@@ -85,7 +85,10 @@ try {
     }
 
     $handler = new \MidgardWhmcs\CallbackHandler();
-    echo json_encode(['status' => $handler->handle($envelope['data'])]);
+    echo json_encode(['status' => $handler->handleEnvelope([
+        'event' => $envelope['event'] ?? '',
+        'data' => $envelope['data'],
+    ])]);
 } catch (\Throwable $e) {
     if (function_exists('logModuleCall')) {
         logModuleCall('midgard', 'callback.internalError', [], $e->getMessage(), null, []);

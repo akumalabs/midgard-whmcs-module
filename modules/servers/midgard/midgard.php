@@ -33,6 +33,8 @@ require_once __DIR__ . '/lib/PasswordGenerator.php';
 require_once __DIR__ . '/lib/ProvisionGate.php';
 require_once __DIR__ . '/lib/ProvisionStateMapper.php';
 require_once __DIR__ . '/lib/ProvisioningNetworkService.php';
+require_once __DIR__ . '/lib/RebuildCompletedHandler.php';
+require_once __DIR__ . '/lib/ReconcileEngine.php';
 require_once __DIR__ . '/lib/SyncService.php';
 require_once __DIR__ . '/lib/TokenInfoStore.php';
 

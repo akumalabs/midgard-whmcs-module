@@ -69,17 +69,92 @@ final class CallbackHandler
         return 'no_service';
     }
 
-    private function handleService(int $serviceId, MetadataStore $store): string
+    /**
+     * Route a VERIFIED envelope to its event handler (scaling plan v2 Fase 2).
+     *
+     * Deploy-order safety: unknown events are acknowledged (caller answers
+     * 200) and logged — never 5xx — so a newer panel may roll out before the
+     * module zip lands without triggering the panel's retry ladder.
+     *
+     * @param array<string, mixed> $envelope full envelope: event + data.
+     * @return string status token for the JSON response body.
+     */
+    public function handleEnvelope(array $envelope): string
     {
-        if ($serviceId <= 0) {
+        $event = strtolower(trim((string) ($envelope['event'] ?? '')));
+        $data = is_array($envelope['data'] ?? null) ? $envelope['data'] : [];
+
+        switch ($event) {
+            case 'server.build.completed':
+                return $this->handle($data); // legacy path — UNCHANGED
+            case 'server.build.failed':
+                return $this->handleBuildFailed($data);
+            case 'server.rebuild.completed':
+                return (new RebuildCompletedHandler())->handle($data);
+            default:
+                self::log('callback.unknownEvent', 0, $event);
+
+                return 'ignored';
+        }
+    }
+
+    /**
+     * server.build.failed — flip the runtime badge to failed and record the
+     * sanitized error code. State-based writes only (idempotent under the
+     * panel's at-least-once retries); NO email is sent (credentials email
+     * only ever fires through the 'ready' gate); billing status untouched.
+     *
+     * Meta keys written are the SAME ones syncFromPanel writes — no new
+     * registrations needed (get/upsert/defaults/ensureMetaColumns all
+     * already cover midgard_runtime_status + midgard_last_error).
+     */
+    private function handleBuildFailed(array $data): string
+    {
+        $serverId = (int) ($data['server_id'] ?? 0);
+        if ($serverId <= 0) {
             return 'no_service';
         }
 
-        $meta = $store->get($serviceId);
-        if (trim((string) ($meta['midgard_server_id'] ?? '')) === '') {
+        $store = new MetadataStore();
+
+        $serviceIds = Capsule::table('mod_midgard_service_meta')
+            ->where('midgard_server_id', (string) $serverId)
+            ->pluck('service_id')
+            ->map(static fn ($id) => (int) $id)
+            ->all();
+
+        if ($serviceIds === []) {
             return 'no_service';
         }
 
+        foreach ($serviceIds as $serviceId) {
+            $meta = $store->get($serviceId);
+            if (trim((string) ($meta['midgard_server_id'] ?? '')) === '') {
+                continue;
+            }
+
+            $meta['midgard_runtime_status'] = 'failed';
+            $meta['midgard_last_error'] = mb_substr(
+                (string) ($data['error_code'] ?? 'installation_failed'),
+                0,
+                191
+            );
+            $store->upsert($serviceId, $meta);
+        }
+
+        return 'failed_state_recorded';
+    }
+
+    /**
+     * Flush the pending credentials email for one service through the SAME
+     * live gate + mailer path as the cron worker. Shared by the legacy
+     * build-completed flow (handleService) and the rebuild.completed
+     * handler (which only calls this when a sealed dispatch row exists).
+     *
+     * @return string 'sent'|'already_sent'|'not_ready'|'no_dispatch'
+     */
+    public function flushPendingCredentials(int $serviceId): string
+    {
         // Idempotency: the credentials dispatch row is the single source of
         // truth. A queued, unsent dispatch is deliverable (sendOneTime
         // finalizes it; a retried delivery then finds none → already_sent).
@@ -87,6 +162,7 @@ final class CallbackHandler
         // never double-mail. Nothing at all means provisioning has not
         // reached the queue step yet → not_ready (cron safety net still owns
         // that case).
+        $store = new MetadataStore();
         $dispatch = $store->pendingDispatchForService($serviceId);
 
         if ($dispatch === null) {
@@ -95,12 +171,12 @@ final class CallbackHandler
                 ->whereNotNull('sent_at')
                 ->exists();
 
-            return $hasSentRow ? 'already_sent' : 'not_ready';
+            return $hasSentRow ? 'already_sent' : 'no_dispatch';
         }
 
         $serverUuid = trim((string) ($dispatch['server_uuid'] ?? ''));
         if ($serverUuid === '') {
-            $serverUuid = trim((string) ($meta['midgard_server_uuid'] ?? ''));
+            $serverUuid = trim((string) ($store->get($serviceId)['midgard_server_uuid'] ?? ''));
         }
 
         // Live gate: identical to the cron flush worker — only a server the
@@ -118,6 +194,7 @@ final class CallbackHandler
 
         if (! ($gate['send'] ?? false)) {
             self::log('callback.notReady', $serviceId, (string) ($gate['reason'] ?? 'unknown'));
+
             return 'not_ready';
         }
 
@@ -128,11 +205,31 @@ final class CallbackHandler
         } catch (\Throwable $e) {
             $store->recordPasswordDispatchError((string) ($dispatch['dispatch_hash'] ?? ''), $e->getMessage());
             self::log('callback.sendFailed', $serviceId, $e->getMessage());
+
             return 'not_ready';
         }
 
         self::log('callback.sent', $serviceId, '');
+
         return 'sent';
+    }
+
+    private function handleService(int $serviceId, MetadataStore $store): string
+    {
+        if ($serviceId <= 0) {
+            return 'no_service';
+        }
+
+        $meta = $store->get($serviceId);
+        if (trim((string) ($meta['midgard_server_id'] ?? '')) === '') {
+            return 'no_service';
+        }
+
+        $status = $this->flushPendingCredentials($serviceId);
+
+        return $status === 'no_dispatch'
+            ? 'not_ready' // legacy contract: no dispatch row = provisioning not reached yet
+            : $status;
     }
 
     /**
