@@ -301,3 +301,22 @@ add_hook('EmailPreSend', 1, function (array $vars): array {
         return [];
     }
 });
+
+// Client area polish: the module template already renders live IPv4/IPv6 in
+// its spec grid, so the native WHMCS "Dedicated IP" / "Assigned IPs" rows
+// would duplicate them on the client area page. Hide the DISPLAY variables
+// for midgard products only — the DB columns stay live so admins keep
+// product details and search-by-IP in the service lists.
+add_hook('ClientAreaPageProductDetails', 1, function (array $vars): array {
+    try {
+        return \MidgardWhmcs\ClientAreaDisplay::filterProductDetailsVars($vars);
+    } catch (\Throwable $e) {
+        logModuleCall('midgard', 'clientAreaDisplay.error', [
+            'serviceid' => (int) ($vars['serviceid'] ?? 0),
+        ], [
+            'message' => $e->getMessage(),
+        ], null, []);
+
+        return $vars;
+    }
+});
