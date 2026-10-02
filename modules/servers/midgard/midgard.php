@@ -22,6 +22,7 @@ require_once __DIR__ . '/lib/CallbackHandler.php';
 require_once __DIR__ . '/lib/CallbackRegistrar.php';
 require_once __DIR__ . '/lib/CallbackRequestVerifier.php';
 require_once __DIR__ . '/lib/CatalogCache.php';
+require_once __DIR__ . '/lib/ClientAreaDisplay.php';
 require_once __DIR__ . '/lib/Config.php';
 require_once __DIR__ . '/lib/DiagnosticSanitizer.php';
 require_once __DIR__ . '/lib/IdempotencyGuard.php';
