@@ -123,7 +123,6 @@ final class SyncServiceTest extends TestCase
                 'disk_gb' => 40,
                 'bandwidth_tb' => 1,
                 'backup_limit' => 3,
-                'snapshot_limit' => 2,
                 'os_image_id' => 99,
             ],
             [
@@ -132,7 +131,6 @@ final class SyncServiceTest extends TestCase
                 'midgard_live_disk' => 107374182400,
                 'midgard_live_bandwidth_limit' => 2199023255552,
                 'midgard_live_backup_limit' => 0,
-                'midgard_live_snapshot_limit' => 5,
             ]
         );
 
@@ -141,7 +139,6 @@ final class SyncServiceTest extends TestCase
         $this->assertSame(100.0, $specs['disk_gb']);
         $this->assertSame(2.0, $specs['bandwidth_tb']);
         $this->assertSame(0, $specs['backup_limit']);
-        $this->assertSame(5, $specs['snapshot_limit']);
         $this->assertSame(99, $specs['os_image_id']);
     }
 
@@ -154,7 +151,6 @@ final class SyncServiceTest extends TestCase
                 'disk_gb' => 120,
                 'bandwidth_tb' => 3,
                 'backup_limit' => 1,
-                'snapshot_limit' => 1,
                 'os_image_id' => 44,
             ],
             [
@@ -163,7 +159,6 @@ final class SyncServiceTest extends TestCase
                 'midgard_live_disk' => null,
                 'midgard_live_bandwidth_limit' => null,
                 'midgard_live_backup_limit' => null,
-                'midgard_live_snapshot_limit' => null,
             ]
         );
 
@@ -172,7 +167,6 @@ final class SyncServiceTest extends TestCase
         $this->assertSame(120, $specs['disk_gb']);
         $this->assertSame(3, $specs['bandwidth_tb']);
         $this->assertSame(1, $specs['backup_limit']);
-        $this->assertSame(1, $specs['snapshot_limit']);
         $this->assertSame(44, $specs['os_image_id']);
     }
 }

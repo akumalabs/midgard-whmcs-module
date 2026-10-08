@@ -93,7 +93,6 @@ final class SyncService
                 $meta['midgard_live_disk'] = $liveResourceSummary['disk'];
                 $meta['midgard_live_bandwidth_limit'] = $liveResourceSummary['bandwidth_limit'];
                 $meta['midgard_live_backup_limit'] = $liveResourceSummary['backup_limit'];
-                $meta['midgard_live_snapshot_limit'] = $liveResourceSummary['snapshot_limit'];
                 // Task-first: an in-flight install task outranks the VM's
                 // (possibly stale) power status, so a rebuild on a running
                 // server cannot write back RUNNING before the task claims
@@ -334,7 +333,6 @@ final class SyncService
         $diskBytes = self::nullableInt($meta['midgard_live_disk'] ?? null);
         $bandwidthBytes = self::nullableInt($meta['midgard_live_bandwidth_limit'] ?? null);
         $backupLimit = self::nullableInt($meta['midgard_live_backup_limit'] ?? null);
-        $snapshotLimit = self::nullableInt($meta['midgard_live_snapshot_limit'] ?? null);
 
         return [
             'cpu' => $cpu ?? (int) ($configSpecs['cpu'] ?? 1),
@@ -348,7 +346,6 @@ final class SyncService
                 ? self::bytesToTerabytes($bandwidthBytes)
                 : ($configSpecs['bandwidth_tb'] ?? 1),
             'backup_limit' => $backupLimit ?? (int) ($configSpecs['backup_limit'] ?? 0),
-            'snapshot_limit' => $snapshotLimit ?? (int) ($configSpecs['snapshot_limit'] ?? 0),
             'os_image_id' => (int) ($configSpecs['os_image_id'] ?? 0),
         ];
     }
@@ -486,8 +483,7 @@ final class SyncService
      *   memory: int|null,
      *   disk: int|null,
      *   bandwidth_limit: int|null,
-     *   backup_limit: int|null,
-     *   snapshot_limit: int|null
+     *   backup_limit: int|null
      * }
      */
     private static function extractLiveResourceSummary(array $serverData): array
@@ -498,7 +494,6 @@ final class SyncService
             'disk' => self::nullableInt($serverData['disk'] ?? null),
             'bandwidth_limit' => self::nullableInt($serverData['bandwidth_limit'] ?? null),
             'backup_limit' => self::nullableInt($serverData['backup_limit'] ?? null),
-            'snapshot_limit' => self::nullableInt($serverData['snapshot_limit'] ?? null),
         ];
     }
 

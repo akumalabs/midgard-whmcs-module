@@ -90,12 +90,7 @@ function midgard_ConfigOptions(): array
             'Default' => '0',
             'Description' => 'Backup slot limit',
         ],
-        'snapshot_limit' => [
-            'Type' => 'text',
-            'Size' => '8',
-            'Default' => '0',
-            'Description' => 'Snapshot limit',
-        ],
+// Snapshot feature take-out (2026-10): snapshot_limit config removed — backups only.
         'default_ipv4' => [
             'Type' => 'yesno',
             'Description' => 'Require IPv4 availability in preflight',
@@ -265,7 +260,6 @@ function midgard_CreateAccount(array $params)
         $memoryGb = Config::intOption($params, 'memory_gb', 1);
         $diskGb = Config::intOption($params, 'disk_gb', 10);
         $backupLimit = Config::intOption($params, 'backup_limit', 0);
-        $snapshotLimit = Config::intOption($params, 'snapshot_limit', 0);
         $bandwidthTb = Config::intOption($params, 'bandwidth_tb', 1);
         $requireIpv4 = Config::boolOption($params, 'default_ipv4', false);
         $requireIpv6 = Config::boolOption($params, 'default_ipv6', false);
@@ -282,7 +276,6 @@ function midgard_CreateAccount(array $params)
             'disk_gb' => $diskGb,
             'bandwidth_tb' => $bandwidthTb,
             'backup_limit' => $backupLimit,
-            'snapshot_limit' => $snapshotLimit,
             'default_ipv4' => $requireIpv4,
             'default_ipv6' => $requireIpv6,
         ]);
@@ -536,7 +529,6 @@ function midgard_CreateAccount(array $params)
             'disk' => $diskBytes,
             'bandwidth_limit' => $bandwidthTb * 1024 * 1024 * 1024 * 1024,
             'backup_limit' => $backupLimit,
-            'snapshot_limit' => $snapshotLimit,
             'os_image_id' => $osImageId,
             'default_ipv4' => $requireIpv4,
             'default_ipv6' => $requireIpv6,
@@ -555,7 +547,6 @@ function midgard_CreateAccount(array $params)
             'disk' => $diskBytes,
             'bandwidth_limit' => $createPayload['bandwidth_limit'],
             'backup_limit' => $backupLimit,
-            'snapshot_limit' => $snapshotLimit,
             'default_ipv4' => $requireIpv4,
             'default_ipv6' => $requireIpv6,
         ]);
@@ -936,7 +927,6 @@ function midgard_ChangePackage(array $params)
             'disk' => Config::intOption($params, 'disk_gb', 10) * 1024 * 1024 * 1024,
             'bandwidth_limit' => Config::intOption($params, 'bandwidth_tb', 1) * 1024 * 1024 * 1024 * 1024,
             'backup_limit' => Config::intOption($params, 'backup_limit', 0),
-            'snapshot_limit' => Config::intOption($params, 'snapshot_limit', 0),
         ];
 
         midgard_client($params)->updateServerResources($serverId, $payload);
@@ -1030,7 +1020,6 @@ function midgard_ClientArea(array $params): array
         'disk_gb' => Config::intOption($params, 'disk_gb', 10),
         'bandwidth_tb' => Config::intOption($params, 'bandwidth_tb', 1),
         'backup_limit' => Config::intOption($params, 'backup_limit', 0),
-        'snapshot_limit' => Config::intOption($params, 'snapshot_limit', 0),
         'os_image_id' => Config::intOption($params, 'os_image_id', 0),
     ];
     $midgardSpecs = SyncService::buildSpecsForClientArea($configSpecs, $meta);
