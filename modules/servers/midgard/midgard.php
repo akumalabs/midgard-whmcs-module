@@ -897,7 +897,18 @@ function midgard_TerminateAccount(array $params)
         $serverId = (int) ($meta['midgard_server_id'] ?? 0);
 
         if ($serverId > 0) {
-            midgard_client($params)->terminateServer($serverId);
+            try {
+                midgard_client($params)->terminateServer($serverId);
+            } catch (MidgardApiException $e) {
+                // Idempotent Terminate: a previous attempt may have destroyed
+                // the VM even though WHMCS saw an error (timeout). 404 = the
+                // panel row is already gone → treat as success so the service
+                // can actually be terminated. Everything else still fails.
+                if (!MidgardApiException::isGone($e)) {
+                    throw $e;
+                }
+                logModuleCall('midgard', 'Terminate', $serviceId, 'server already destroyed (404) — treated as success');
+            }
         }
 
         $store->clear($serviceId);

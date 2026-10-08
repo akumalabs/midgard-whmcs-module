@@ -37,6 +37,17 @@ final class MidgardApiException extends \RuntimeException
 
 final class ApiClient
 {
+    /**
+     * Terminate idempotency (2026-10-08 kuroit incident): a Terminate whose
+     * HTTP call timed out may still have destroyed the server. The operator's
+     * retry then hits a GONE row and the panel answers 404. Only a 404 API
+     * response means "already destroyed" — timeouts (code 0), 5xx and any
+     * non-API exception stay real failures.
+     */
+    public static function isGone(\Throwable $e): bool
+    {
+        return $e instanceof MidgardApiException && $e->statusCode() === 404;
+    }
     public const DEFAULT_BASE_PATH = '/api/v1/admin';
 
     private string $baseUrl;
