@@ -36,6 +36,7 @@ require_once __DIR__ . '/lib/ProvisionStateMapper.php';
 require_once __DIR__ . '/lib/ProvisioningNetworkService.php';
 require_once __DIR__ . '/lib/RebuildCompletedHandler.php';
 require_once __DIR__ . '/lib/ReconcileEngine.php';
+require_once __DIR__ . '/lib/SecretCrypto.php';
 require_once __DIR__ . '/lib/SyncService.php';
 require_once __DIR__ . '/lib/TokenInfoStore.php';
 
@@ -1098,7 +1099,6 @@ function midgard_ClientArea(array $params): array
         'midgardPrimaryIp' => $primaryIp,
         'midgardAssignedIps' => $assignedIpsText,
         'midgardAssignedIpsArray' => $assignedIpsArray,
-        'midgardServerSpecs' => $midgardSpecs,
         'midgardOsName' => (string) ($meta['midgard_os_name'] ?? ''),
         'midgardVmid' => (string) ($meta['midgard_vmid'] ?? ''),
         'midgardLocation' => (string) ($meta['midgard_location'] ?? ''),

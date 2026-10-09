@@ -15,6 +15,9 @@ class MetadataStore implements PasswordDispatchStore
     private const PROVISION_LOCK_TABLE = 'mod_midgard_provision_lock';
     private const INSTALL_SETTINGS_TABLE = 'mod_midgard_install_settings';
 
+    /** Age (seconds) at which an unreleased provision lock counts as stale. */
+    private const LOCK_STALE_SECONDS = 1800;
+
     /**
      * @return array<string, mixed>
      */
@@ -390,9 +393,10 @@ class MetadataStore implements PasswordDispatchStore
      * duplicate server (and duplicate credentials email).
      *
      * Stale locks (e.g. left behind by a PHP fatal error/OOM kill that
-     * skipped the finally block) expire after 10 minutes — comfortably
-     * longer than any real provisioning attempt should take — so a genuinely
-     * abandoned lock doesn't permanently block future retries.
+     * skipped the finally block) expire after LOCK_STALE_SECONDS (30
+     * minutes) — comfortably longer than any real provisioning attempt
+     * should take — so a genuinely abandoned lock doesn't permanently block
+     * future retries.
      *
      * @return bool True if the lock was acquired, false if another attempt
      *               already holds it (and hasn't expired).
@@ -401,7 +405,7 @@ class MetadataStore implements PasswordDispatchStore
     {
         $this->ensureSchema();
         $now = time();
-        $staleBefore = date('Y-m-d H:i:s', $now - 1800);
+        $staleBefore = date('Y-m-d H:i:s', $now - self::LOCK_STALE_SECONDS);
         Capsule::table(self::PROVISION_LOCK_TABLE)->where('service_id', $serviceId)->where('claimed_at', '<', $staleBefore)->delete();
         $lockToken = bin2hex(random_bytes(16));
         try {
@@ -457,6 +461,12 @@ class MetadataStore implements PasswordDispatchStore
             return;
         }
 
+        // Once-per-process: after the first successful run the flag skips ALL
+        // hasTable/hasColumn/ensureMetaColumns probing for the rest of the
+        // process lifetime. A module table dropped MID-PROCESS (after a
+        // successful ensureSchema in the same request) is therefore NOT
+        // re-created — callers fail with a DB error instead. Out-of-process
+        // requests re-run the check, which is the supported recovery path.
         $schema = Capsule::schema();
 
         if (! $schema->hasTable(self::META_TABLE)) {

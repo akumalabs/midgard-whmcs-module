@@ -263,9 +263,12 @@ final class PasswordMailer
     }
 
     /**
-     * Seal a password into metadata storage. Prefers WHMCS's own
-     * encryption (same trust domain as the service password fields);
-     * falls back to reversible base64 when encrypt() is unavailable.
+     * Seal a password into metadata storage using WHMCS's own encryption
+     * (same trust domain as the service password fields). Throws when the
+     * cipher is unavailable — queue() releases its dispatch claim on the
+     * throw, so no reversible blob is ever persisted.
+     *
+     * @throws \RuntimeException when encrypt() is missing or fails
      */
     private static function seal(string $password): string
     {
@@ -276,7 +279,9 @@ final class PasswordMailer
             }
         }
 
-        return 'plain:' . base64_encode($password);
+        throw new \RuntimeException(
+            'WHMCS encrypt() unavailable — refusing to store credentials unencrypted.'
+        );
     }
 
     private static function unseal(string $blob): ?string

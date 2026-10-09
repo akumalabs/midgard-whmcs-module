@@ -64,8 +64,12 @@ try {
         $headers = $_SERVER;
     }
 
-    $secret = (string) midgard_store()->getInstallSetting(
-        \MidgardWhmcs\CallbackRegistrar::SETTING_SECRET
+    // Stored WHMCS-encrypted by CallbackRegistrar (SecretCrypto 'enc:' blob);
+    // unseal() passes through legacy raw secrets unchanged.
+    $secret = \MidgardWhmcs\SecretCrypto::unseal(
+        (string) midgard_store()->getInstallSetting(
+            \MidgardWhmcs\CallbackRegistrar::SETTING_SECRET
+        )
     );
 
     $verification = \MidgardWhmcs\CallbackRequestVerifier::verify($secret, $headers, $rawBody);

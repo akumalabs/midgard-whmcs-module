@@ -7,7 +7,9 @@ namespace MidgardWhmcs\Tests\Unit;
 use Illuminate\Database\Capsule\Manager as Capsule;
 use MidgardWhmcs\ApiClient;
 use MidgardWhmcs\CallbackRegistrar;
+use MidgardWhmcs\CallbackRequestVerifier;
 use MidgardWhmcs\MetadataStore;
+use MidgardWhmcs\SecretCrypto;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -131,10 +133,64 @@ final class CallbackRegistrarTest extends TestCase
         $registrar = new CallbackRegistrar();
         $registrar->register($this->params(), $this->store, $this->fakeFactory($recorded));
 
+        // At rest the secret MUST be WHMCS-encrypted ('enc:' blob, SecretCrypto):
+        // the raw 64-hex value never sits in the install KV table.
+        $rawStored = (string) $this->store->getInstallSetting(CallbackRegistrar::SETTING_SECRET);
+        $this->assertNotSame($recorded[0]['secret'], $rawStored, 'raw secret must NOT be persisted');
+        $this->assertStringStartsWith('enc:', $rawStored);
+
+        // Read side (unseal) restores exactly the secret that was sent.
         $this->assertSame(
             $recorded[0]['secret'],
-            $this->store->getInstallSetting(CallbackRegistrar::SETTING_SECRET)
+            SecretCrypto::unseal($rawStored)
         );
+    }
+
+    /**
+     * End-to-end verification contract: a callback signed with the secret the
+     * registrar sent must still VERIFY when the verifier reads the secret back
+     * through SecretCrypto::unseal() (what callback.php does) — i.e.
+     * encrypt-at-rest must not change the HMAC key material.
+     */
+    public function test_callback_verification_passes_with_encrypted_secret_at_rest(): void
+    {
+        $recorded = [];
+        (new CallbackRegistrar())->register($this->params(), $this->store, $this->fakeFactory($recorded));
+        $sentSecret = $recorded[0]['secret'];
+
+        $stored = (string) $this->store->getInstallSetting(CallbackRegistrar::SETTING_SECRET);
+        $this->assertNotSame($sentSecret, $stored);
+
+        $body = '{"event":"server.build.completed","data":{"server_id":1}}';
+        $timestamp = '1750000100';
+        $headers = [
+            'X-Midgard-Event' => 'server.build.completed',
+            'X-Midgard-Timestamp' => $timestamp,
+            'X-Midgard-Signature' => 'sha256=' . hash_hmac('sha256', $timestamp . '.' . $body, $sentSecret),
+        ];
+
+        $secret = SecretCrypto::unseal($stored);
+        $verification = CallbackRequestVerifier::verify($secret, $headers, $body, (int) $timestamp);
+        $this->assertTrue($verification['ok'], $verification['error']);
+    }
+
+    /**
+     * Legacy installs hold the RAW secret (pre-encryption format). unseal()
+     * must pass it through unchanged — the stale-flag re-registration path
+     * re-sends the SAME raw secret to the panel instead of minting a new one.
+     */
+    public function test_legacy_raw_secret_is_reused_not_reencrypted(): void
+    {
+        $this->store->setInstallSetting(CallbackRegistrar::SETTING_SECRET, 'aabb');
+        $this->store->setInstallSetting(CallbackRegistrar::SETTING_REGISTERED, '2026-09-16 16:58:31');
+
+        $recorded = [];
+        (new CallbackRegistrar())->register($this->params(), $this->store, $this->fakeFactory($recorded));
+
+        $this->assertSame('aabb', SecretCrypto::unseal(
+            (string) $this->store->getInstallSetting(CallbackRegistrar::SETTING_SECRET)
+        ));
+        $this->assertSame('aabb', $recorded[0]['secret']);
     }
 
     public function test_reseller_mode_registers_with_scoped_client(): void

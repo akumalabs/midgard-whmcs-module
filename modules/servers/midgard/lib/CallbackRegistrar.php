@@ -54,10 +54,14 @@ final class CallbackRegistrar
 
         // Ensure the secret exists FIRST (persisted before any HTTP traffic):
         // a crash mid-registration then retries with the identical secret.
-        $secret = (string) $store->getInstallSetting(self::SETTING_SECRET);
+        // At rest the secret is stored WHMCS-encrypted ('enc:' prefix,
+        // SecretCrypto) — the raw 64-hex value never sits in the KV table.
+        $secret = SecretCrypto::unseal(
+            (string) $store->getInstallSetting(self::SETTING_SECRET)
+        );
         if ($secret === '') {
             $secret = self::generateSecret();
-            $store->setInstallSetting(self::SETTING_SECRET, $secret);
+            $store->setInstallSetting(self::SETTING_SECRET, SecretCrypto::seal($secret));
         }
 
         // The flag stores the REGISTERED URL (not a timestamp): a stored
