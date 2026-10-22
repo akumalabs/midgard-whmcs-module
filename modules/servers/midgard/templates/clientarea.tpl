@@ -108,6 +108,12 @@
         /* ── Definition rows (2 kolom: kiri identitas, kanan resource) ── */
         .midgard-ca-rows { display: grid; column-gap: 32px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 30px; row-gap: 0; }
         .midgard-ca-row { align-items: baseline; display: flex; gap: 12px; padding: 7px 0; }
+        .mg-cred-btns { display: inline-flex; gap: 4px; margin-left: auto; }
+        .mg-pw-eye .mg-eye-off { display: none; }
+        .mg-pw-eye.mg-revealed .mg-eye-on { display: none; }
+        .mg-pw-eye.mg-revealed .mg-eye-off { display: block; }
+        .mg-toast { background: #18181b; border: 1px solid var(--mg-border-strong); border-radius: 8px; bottom: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.25); color: #fafafa; font-size: 13px; left: 50%; opacity: 0; padding: 10px 16px; pointer-events: none; position: fixed; transform: translateX(-50%); transition: opacity 0.2s ease; z-index: 10001; }
+        .mg-toast.mg-toast-show { opacity: 1; }
         .midgard-ca-label { color: var(--mg-text); flex: 0 0 88px; font-size: 12.5px; font-weight: 700; letter-spacing: 0.02em; }
         .midgard-ca-value { color: var(--mg-text); flex: 1; font-size: 13.5px; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 0; word-break: break-word; }
 
@@ -164,6 +170,8 @@
         .mg-btn { border: 1px solid var(--mg-border-strong); border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; padding: 9px 16px; }
         .mg-btn-ghost { background: #ffffff; color: var(--mg-muted); }
         .mg-btn-ghost:hover:not(:disabled) { color: var(--mg-text); }
+        .mg-btn-primary { background: #4f46e5; border-color: #4f46e5; color: #ffffff; }
+        .mg-btn-primary:hover:not(:disabled) { background: #4338ca; border-color: #4338ca; }
         .mg-btn-danger { background: var(--mg-danger); border-color: var(--mg-danger); color: #ffffff; }
         .mg-btn-danger:hover:not(:disabled) { background: var(--mg-danger-hover); }
         .mg-btn:disabled { cursor: not-allowed; opacity: 0.5; }
@@ -202,7 +210,7 @@
 
     {* ── Header: name + action bar ───────────────────────────────────── *}
     <div class="midgard-ca-header">
-        <h3 class="midgard-ca-title" id="mg-server-title">{$midgardServerName|default:'-'|escape}</h3>
+        <h3 class="midgard-ca-title" id="mg-server-title">{$midgardServerName|default:'-'|escape}{if $midgardActionsEnabled}<button type="button" class="mg-icon-btn mg-rename" id="mg-btn-rename" title="Rename server" aria-label="Rename server"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>{/if}</h3>
 
         {if $midgardActionsEnabled}
             <div class="midgard-ca-actions" id="mg-actions">
@@ -242,40 +250,59 @@
             <span class="midgard-ca-value">{$midgardVmid|default:'-'|escape}</span>
         </div>
         <div class="midgard-ca-row">
-            <span class="midgard-ca-label">OS</span>
-            <span class="midgard-ca-value" id="mg-card-os-value">{$midgardOsName|default:'-'|escape}</span>
+            <span class="midgard-ca-label">Location</span>
+            <span class="midgard-ca-value">{$midgardLocation|default:'-'|escape}</span>
         </div>
         <div class="midgard-ca-row">
             <span class="midgard-ca-label">Hostname</span>
             <span class="midgard-ca-value" id="mg-hostname-value">{$midgardServiceHostname|default:$domain|default:'-'|escape}</span>
         </div>
         <div class="midgard-ca-row">
-            <span class="midgard-ca-label">Location</span>
-            <span class="midgard-ca-value">{$midgardLocation|default:'-'|escape}</span>
+            <span class="midgard-ca-label">Bandwidth</span>
+            <span class="midgard-ca-value">{$midgardSpecs.bandwidth_tb|default:'-'} TB</span>
         </div>
         <div class="midgard-ca-row">
             <span class="midgard-ca-label">CPU</span>
             <span class="midgard-ca-value">{$midgardSpecs.cpu|default:'-'} Core(s)</span>
         </div>
         <div class="midgard-ca-row">
-            <span class="midgard-ca-label">Bandwidth</span>
-            <span class="midgard-ca-value">{$midgardSpecs.bandwidth_tb|default:'-'} TB</span>
+            <span class="midgard-ca-label">IPv4</span>
+            <span class="midgard-ca-value" id="mg-ipv4-value">{$midgardPrimaryIpv4|default:'-'|escape}</span>
         </div>
         <div class="midgard-ca-row">
             <span class="midgard-ca-label">RAM</span>
             <span class="midgard-ca-value">{$midgardSpecs.memory_gb|default:'-'} GB</span>
         </div>
         <div class="midgard-ca-row">
-            <span class="midgard-ca-label">IPv4</span>
-            <span class="midgard-ca-value" id="mg-ipv4-value">{$midgardPrimaryIpv4|default:'-'|escape}</span>
+            <span class="midgard-ca-label">IPv6</span>
+            <span class="midgard-ca-value" id="mg-ipv6-value">{$midgardPrimaryIpv6|default:'-'|escape}</span>
         </div>
         <div class="midgard-ca-row">
             <span class="midgard-ca-label">Disk</span>
             <span class="midgard-ca-value">{$midgardSpecs.disk_gb|default:'-'} GB</span>
         </div>
         <div class="midgard-ca-row">
-            <span class="midgard-ca-label">IPv6</span>
-            <span class="midgard-ca-value" id="mg-ipv6-value">{$midgardPrimaryIpv6|default:'-'|escape}</span>
+            <span class="midgard-ca-label">User</span>
+            <span class="midgard-ca-value" id="mg-user-value">{$midgardOsUser|default:'root'|escape}</span>
+        </div>
+        <div class="midgard-ca-row">
+            <span class="midgard-ca-label">OS</span>
+            <span class="midgard-ca-value" id="mg-card-os-value">{$midgardOsName|default:'-'|escape}</span>
+        </div>
+        <div class="midgard-ca-row">
+            <span class="midgard-ca-label">Password</span>
+            <span class="midgard-ca-value" id="mg-password-value" data-masked="1">&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;</span>
+            {if $midgardActionsEnabled}
+            <span class="mg-cred-btns">
+                <button type="button" class="mg-icon-btn mg-pw-eye" id="mg-pw-eye" title="Show password" aria-label="Show password" aria-pressed="false">
+                    <svg class="mg-eye-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    <svg class="mg-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                </button>
+                <button type="button" class="mg-icon-btn mg-pw-copy" id="mg-pw-copy" title="Copy password" aria-label="Copy password">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+            </span>
+            {/if}
         </div>
     </div>
 
@@ -327,6 +354,33 @@
                         <button type="button" class="mg-btn mg-btn-ghost" id="mg-rebuild-cancel">Cancel</button>
                         <button type="button" class="mg-btn mg-btn-danger" id="mg-rebuild-confirm" disabled>Rebuild</button>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {* ── Rename modal (identity edit; hostnames inside the OS only change on rebuild) *}
+    <div class="mg-modal-backdrop" id="mg-rename-backdrop" aria-hidden="true">
+        <div class="mg-modal" role="dialog" aria-modal="true" aria-labelledby="mg-rename-title">
+            <div class="mg-modal-head">
+                <h4 class="mg-modal-title" id="mg-rename-title">Rename server</h4>
+                <button type="button" class="mg-modal-x" id="mg-rename-x" aria-label="Close">&times;</button>
+            </div>
+            <div class="mg-modal-body">
+                <div class="mg-rebuild-grid">
+                    <div class="mg-field">
+                        <label for="mg-rename-name">Server Name</label>
+                        <input type="text" id="mg-rename-name" autocomplete="off" value="{$midgardServerName|default:''|escape}" placeholder="Midgard Server" />
+                    </div>
+                    <div class="mg-field">
+                        <label for="mg-rename-hostname">Hostname <span class="mg-opt">(Optional)</span></label>
+                        <input type="text" id="mg-rename-hostname" autocomplete="off" value="{$midgardServiceHostname|default:''|escape}" placeholder="server.example.com" />
+                        <div class="mg-hint">The hostname inside the operating system only changes on rebuild.</div>
+                    </div>
+                </div>
+                <div class="mg-modal-foot">
+                    <button type="button" class="mg-btn mg-btn-ghost" id="mg-rename-cancel">Cancel</button>
+                    <button type="button" class="mg-btn mg-btn-primary" id="mg-rename-save" disabled>Save</button>
                 </div>
             </div>
         </div>
@@ -455,6 +509,11 @@
                     if (data.name) {
                         var title = $('mg-server-title');
                         if (title && title.textContent !== data.name) { title.textContent = data.name; }
+                    }
+                    // User row follows the OS distro (rebuild linux↔windows flips root↔Administrator live).
+                    if (data.os_user) {
+                        var userCell = $('mg-user-value');
+                        if (userCell && userCell.textContent !== data.os_user) { userCell.textContent = data.os_user; }
                     }
                     // IP rows live-sync from synced meta (rebuilds keep the
                     // same addresses, but early-create refreshes converge the
@@ -696,6 +755,199 @@
             }
 
             function run() { stripNativeRows(root); }
+
+            /* ── Toast helper ──────────────────────────────────────────── */
+            var toastEl = null;
+            var toastTimer = null;
+            function toast(message) {
+                if (!toastEl) {
+                    toastEl = document.createElement('div');
+                    toastEl.className = 'mg-toast';
+                    document.body.appendChild(toastEl);
+                }
+                toastEl.textContent = message;
+                toastEl.className = 'mg-toast mg-toast-show';
+                if (toastTimer) { clearTimeout(toastTimer); }
+                toastTimer = setTimeout(function () {
+                    toastEl.className = 'mg-toast';
+                }, 4000);
+            }
+
+            /* ── Password reveal + copy (on-demand fetch, never in HTML) ── */
+            var pwRevealed = false;
+            var pwValue = '';
+            var eyeBtn = $('mg-pw-eye');
+            var copyBtn = $('mg-pw-copy');
+            var pwCell = $('mg-password-value');
+
+            function pwShow() {
+                pwCell.textContent = pwValue;
+                pwCell.removeAttribute('data-masked');
+                eyeBtn.className = 'mg-icon-btn mg-pw-eye mg-revealed';
+                eyeBtn.setAttribute('aria-pressed', 'true');
+                eyeBtn.title = 'Hide password';
+            }
+            function pwHide() {
+                pwCell.textContent = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
+                pwCell.setAttribute('data-masked', '1');
+                eyeBtn.className = 'mg-icon-btn mg-pw-eye';
+                eyeBtn.setAttribute('aria-pressed', 'false');
+                eyeBtn.title = 'Show password';
+            }
+
+            if (eyeBtn) {
+                eyeBtn.addEventListener('click', function () {
+                    if (pwRevealed) {
+                        pwRevealed = false;
+                        pwHide();
+                        return;
+                    }
+                    if (pwValue !== '') {
+                        pwRevealed = true;
+                        pwShow();
+                        return;
+                    }
+                    eyeBtn.disabled = true;
+                    api('credentials', {})
+                        .then(function (data) {
+                            pwValue = String(data.password || '');
+                            pwRevealed = true;
+                            pwShow();
+                        })
+                        .catch(function (err) {
+                            toast((err && err.message) ? err.message : 'Password is not available.');
+                        })
+                        .then(function () { eyeBtn.disabled = false; });
+                });
+            }
+
+            if (copyBtn) {
+                copyBtn.addEventListener('click', function () {
+                    var write = function (value) {
+                        if (navigator.clipboard && navigator.clipboard.writeText) {
+                            navigator.clipboard.writeText(value).then(function () {
+                                toast('Password copied to clipboard.');
+                            }, function () {
+                                toast('Copy failed — select and copy manually.');
+                            });
+                        } else {
+                            toast('Copy is not supported by this browser.');
+                        }
+                    };
+                    if (pwValue !== '') {
+                        write(pwValue);
+                        return;
+                    }
+                    copyBtn.disabled = true;
+                    api('credentials', {})
+                        .then(function (data) {
+                            pwValue = String(data.password || '');
+                            if (!pwRevealed) {
+                                pwRevealed = true;
+                                pwShow();
+                            }
+                            write(pwValue);
+                        })
+                        .catch(function (err) {
+                            toast((err && err.message) ? err.message : 'Password is not available.');
+                        })
+                        .then(function () { copyBtn.disabled = false; });
+                });
+            }
+
+            /* ── Rename modal (identity) ──────────────────────────────── */
+            var renameOpen = false;
+            var renameBusy = false;
+            var renameBackdrop = $('mg-rename-backdrop');
+            var renameName = $('mg-rename-name');
+            var renameHostname = $('mg-rename-hostname');
+            var renameSave = $('mg-rename-save');
+            var renameInitial = { name: '', hostname: '' };
+
+            function renameDirty() {
+                return (renameName.value.trim() !== '' && renameName.value.trim() !== renameInitial.name) ||
+                       (renameHostname.value.trim() !== '' && renameHostname.value.trim() !== renameInitial.hostname);
+            }
+            function renameRefreshSave() {
+                renameSave.disabled = renameBusy || !renameDirty();
+            }
+            function openRename() {
+                renameOpen = true;
+                renameInitial.name = $('mg-server-title').textContent.trim();
+                renameInitial.hostname = ($('mg-hostname-value') ? $('mg-hostname-value').textContent.trim() : '');
+                renameName.value = renameInitial.name;
+                renameHostname.value = renameInitial.hostname;
+                renameRefreshSave();
+                renameBackdrop.className = 'mg-modal-backdrop mg-open';
+                renameName.focus();
+            }
+            function closeRename() {
+                renameOpen = false;
+                renameBackdrop.className = 'mg-modal-backdrop';
+            }
+
+            var renameBtn = $('mg-btn-rename');
+            if (renameBtn) {
+                renameBtn.addEventListener('click', openRename);
+            }
+            if ($('mg-rename-x')) { $('mg-rename-x').addEventListener('click', closeRename); }
+            if ($('mg-rename-cancel')) { $('mg-rename-cancel').addEventListener('click', closeRename); }
+            if (renameBackdrop) {
+                renameBackdrop.addEventListener('click', function (e) {
+                    if (e.target === renameBackdrop) { closeRename(); }
+                });
+            }
+            if (renameName) {
+                renameName.addEventListener('input', renameRefreshSave);
+                renameHostname.addEventListener('input', renameRefreshSave);
+                renameName.addEventListener('keydown', function (e) {
+                    if (e.key === 'Enter' && !renameSave.disabled) { renameSave.click(); }
+                    if (e.key === 'Escape') { closeRename(); }
+                });
+            }
+
+            if (renameSave) {
+                renameSave.addEventListener('click', function () {
+                    if (renameBusy) { return; }
+                    var name = renameName.value.trim();
+                    var hostname = renameHostname.value.trim();
+                    if (name === '' && hostname === '') { return; }
+
+                    var payload = {};
+                    if (name !== '') { payload.name = name; }
+                    if (hostname !== '') { payload.hostname = hostname; }
+
+                    var prevHostname = renameInitial.hostname;
+                    renameBusy = true;
+                    renameSave.disabled = true;
+                    renameSave.textContent = 'Saving…';
+                    api('identity', payload)
+                        .then(function (data) {
+                            if (data.name) {
+                                $('mg-server-title').textContent = data.name;
+                                renameInitial.name = data.name;
+                            }
+                            if (data.hostname && $('mg-hostname-value')) {
+                                $('mg-hostname-value').textContent = data.hostname;
+                                renameInitial.hostname = data.hostname;
+                            }
+                            closeRename();
+                            // Per spec: silent on name-only changes; the reboot
+                            // toast fires ONLY when the hostname changed.
+                            if (data.hostname && data.hostname !== prevHostname) {
+                                toast('Reboot the server for the hostname change to take effect inside the OS.');
+                            }
+                        })
+                        .catch(function (err) {
+                            toast((err && err.message) ? err.message : 'Rename failed.');
+                        })
+                        .then(function () {
+                            renameBusy = false;
+                            renameSave.textContent = 'Save';
+                            renameRefreshSave();
+                        });
+                });
+            }
 
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', function () {

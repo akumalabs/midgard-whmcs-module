@@ -329,6 +329,33 @@ final class ApiClient
     }
 
     /**
+     * Update the server identity (name + optional hostname) — admin endpoint
+     * PUT /servers/{id} (apiResource update). The panel auto-slugs the
+     * hostname when omitted, syncs the PVE config name, and writes the
+     * server_name_updated / server_hostname_updated activity events.
+     * Responds {message, data: {…formatServer incl. name, hostname}}.
+     *
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    public function updateServerIdentity(int $serverId, array $payload): array
+    {
+        return $this->request('PUT', $this->basePath . '/servers/' . $serverId, $payload);
+    }
+
+    /**
+     * Fetch the last known OS password (admin endpoint GET /servers/{id}/password).
+     * Responds {data: {password}}; a 404 (password never stored) bubbles as
+     * MidgardApiException so callers can map it to a "reset first" message.
+     *
+     * @return array<string, mixed>
+     */
+    public function getServerPassword(int $serverId): array
+    {
+        return $this->get($this->basePath . '/servers/' . $serverId . '/password');
+    }
+
+    /**
      * @param array<string, mixed> $payload
      * @return array<string, mixed>
      */

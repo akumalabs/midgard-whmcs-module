@@ -135,6 +135,111 @@ try {
     ], null, []);
 
     switch ($action) {
+        case 'credentials':
+            // On-demand password reveal. The plaintext NEVER renders into the
+            // initial page HTML — the grid shows a masked placeholder and the
+            // value is fetched only here, behind session+CSRF+ownership.
+            // Log discipline: shapes only, never the password itself.
+            try {
+                $password = \MidgardWhmcs\ClientAreaCredentials::fetchPassword($client, $serverId);
+            } catch (\MidgardWhmcs\MidgardApiException $exception) {
+                if ($exception->statusCode() === 404) {
+                    midgard_ajax_respond(404, ['status' => 'error', 'message' => 'No stored password for this server. Reset it first.']);
+                }
+                throw $exception;
+            }
+
+            if ($password === '') {
+                midgard_ajax_respond(404, ['status' => 'error', 'message' => 'No stored password for this server. Reset it first.']);
+            }
+
+            logModuleCall('midgard', 'clientarea.credentials_revealed', [
+                'serviceid' => $serviceId,
+                'serverid' => $serverId,
+                'userid' => $clientId,
+            ], [
+                'revealed' => true,
+            ], null, []);
+
+            midgard_ajax_respond(200, ['status' => 'ok', 'data' => ['password' => $password]]);
+
+        case 'identity':
+            // Rename server (name + optional hostname). The panel auto-slugs
+            // the hostname when omitted and syncs the PVE config name. Hostname
+            // INSIDE the guest OS is not touched (rebuild-only, per panel
+            // provisioning contract) — the UI communicates this separately.
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+                midgard_ajax_respond(405, ['status' => 'error', 'message' => 'Method not allowed.']);
+            }
+
+            $name = trim((string) ($_POST['name'] ?? ''));
+            $hostname = trim((string) ($_POST['hostname'] ?? ''));
+            if ($name === '' && $hostname === '') {
+                midgard_ajax_respond(422, ['status' => 'error', 'message' => 'Nothing to update.']);
+            }
+            if (mb_strlen($name) > 255) {
+                midgard_ajax_respond(422, ['status' => 'error', 'message' => 'Server name is too long.']);
+            }
+            if ($hostname !== '' && ! preg_match('/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/i', $hostname)) {
+                midgard_ajax_respond(422, ['status' => 'error', 'message' => 'Hostname contains invalid characters.']);
+            }
+
+            $identityPayload = [];
+            if ($name !== '') {
+                $identityPayload['name'] = $name;
+            }
+            if ($hostname !== '') {
+                $identityPayload['hostname'] = $hostname;
+            }
+
+            try {
+                $updated = $client->updateServerIdentity($serverId, $identityPayload);
+            } catch (\MidgardWhmcs\MidgardApiException $exception) {
+                $message = (string) ($exception->payload()['message'] ?? '');
+                if ($message === '') {
+                    $message = $exception->getMessage();
+                }
+                logModuleCall('midgard', 'clientarea.identity_failed', [
+                    'serviceid' => $serviceId,
+                    'serverid' => $serverId,
+                    'status_code' => (int) $exception->getCode(),
+                ], [
+                    'message' => $message,
+                ], null, []);
+                midgard_ajax_respond(502, ['status' => 'error', 'message' => $message]);
+            }
+
+            $data = is_array($updated['data'] ?? null) ? $updated['data'] : [];
+            $newName = trim((string) ($data['name'] ?? ''));
+            $newHostname = trim((string) ($data['hostname'] ?? ''));
+
+            // Persist to meta (both keys registered) so the next full page
+            // render shows the new identity even before the next cron sync.
+            try {
+                $store->patchMeta($serviceId, array_filter([
+                    'midgard_server_name' => $newName,
+                    'midgard_server_hostname' => $newHostname,
+                ], static fn ($v): bool => $v !== ''));
+            } catch (\Throwable $ignored) {
+                // best-effort; the panel remains the source of truth
+            }
+
+            logModuleCall('midgard', 'clientarea.identity_updated', [
+                'serviceid' => $serviceId,
+                'serverid' => $serverId,
+            ], [
+                'name_changed' => $newName !== '',
+                'hostname_changed' => $newHostname !== '',
+            ], null, []);
+
+            midgard_ajax_respond(200, ['status' => 'ok', 'data' => [
+                'name' => $newName,
+                'hostname' => $newHostname,
+                // The change is meta/PVE-config only — no reboot needed; the
+                // reboot note applies to the OS-internal hostname (rebuild).
+                'reboot_required' => false,
+            ]]);
+
         case 'status':
             // LIVE from the panel (not synced meta): the rebuild modal is
             // gone and the badge is the only rebuild feedback the client
@@ -173,9 +278,11 @@ try {
             $liveName = trim((string) ($liveData['name'] ?? ''));
             $liveHostname = trim((string) ($liveData['hostname'] ?? ''));
             $liveOsName = '';
+            $liveDistro = '';
             $osImage = $liveData['os_image'] ?? null;
             if (is_array($osImage)) {
                 $liveOsName = trim((string) ($osImage['name'] ?? ''));
+                $liveDistro = trim((string) ($osImage['distro'] ?? ''));
             }
 
             $effective = \MidgardWhmcs\SyncService::effectiveRuntimeStatus(
@@ -197,11 +304,14 @@ try {
                 $meta = $store->get($serviceId);
             }
 
+            $osDistro = $liveDistro !== '' ? $liveDistro : (string) ($meta['midgard_os_distro'] ?? '');
+
             midgard_ajax_respond(200, [
                 'status' => 'ok',
                 'data' => [
                     'status' => $effective,
                     'os_name' => $liveOsName !== '' ? $liveOsName : (string) ($meta['midgard_os_name'] ?? ''),
+                    'os_user' => \MidgardWhmcs\ClientAreaCredentials::deriveUser($osDistro !== '' ? $osDistro : null),
                     'name' => $liveName !== '' ? $liveName : (string) ($meta['midgard_server_name'] ?? ''),
                     'hostname' => $liveHostname !== '' ? $liveHostname : (string) ($meta['midgard_server_hostname'] ?? ''),
                     'ipv4' => (string) ($meta['midgard_primary_ipv4'] ?? ''),

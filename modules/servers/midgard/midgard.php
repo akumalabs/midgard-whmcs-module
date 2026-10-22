@@ -23,6 +23,7 @@ require_once __DIR__ . '/lib/CallbackRegistrar.php';
 require_once __DIR__ . '/lib/CallbackRequestVerifier.php';
 require_once __DIR__ . '/lib/CatalogCache.php';
 require_once __DIR__ . '/lib/ClientAreaDisplay.php';
+require_once __DIR__ . '/lib/ClientAreaCredentials.php';
 require_once __DIR__ . '/lib/Config.php';
 require_once __DIR__ . '/lib/DiagnosticSanitizer.php';
 require_once __DIR__ . '/lib/IdempotencyGuard.php';
@@ -1100,6 +1101,9 @@ function midgard_ClientArea(array $params): array
         'midgardAssignedIps' => $assignedIpsText,
         'midgardAssignedIpsArray' => $assignedIpsArray,
         'midgardOsName' => (string) ($meta['midgard_os_name'] ?? ''),
+        'midgardOsUser' => \MidgardWhmcs\ClientAreaCredentials::deriveUser(
+            isset($meta['midgard_os_distro']) ? (string) $meta['midgard_os_distro'] : null
+        ),
         'midgardVmid' => (string) ($meta['midgard_vmid'] ?? ''),
         'midgardLocation' => (string) ($meta['midgard_location'] ?? ''),
     ];

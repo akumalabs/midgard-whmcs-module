@@ -48,6 +48,7 @@ class MetadataStore implements PasswordDispatchStore
             'midgard_primary_ipv6' => (string) ($row->midgard_primary_ipv6 ?? ''),
             'midgard_stats_json' => (string) ($row->midgard_stats_json ?? ''),
             'midgard_os_name' => (string) ($row->midgard_os_name ?? ''),
+            'midgard_os_distro' => (string) ($row->midgard_os_distro ?? ''),
             'midgard_vmid' => (string) ($row->midgard_vmid ?? ''),
             'midgard_location' => (string) ($row->midgard_location ?? ''),
             'midgard_server_name' => (string) ($row->midgard_server_name ?? ''),
@@ -94,6 +95,7 @@ class MetadataStore implements PasswordDispatchStore
             'midgard_live_snapshot_limit' => $this->nullableInt($data['midgard_live_snapshot_limit'] ?? null),
             'midgard_stats_json' => (string) ($data['midgard_stats_json'] ?? ''),
             'midgard_os_name' => (string) ($data['midgard_os_name'] ?? ''),
+            'midgard_os_distro' => (string) ($data['midgard_os_distro'] ?? ''),
             'midgard_vmid' => (string) ($data['midgard_vmid'] ?? ''),
             'midgard_location' => (string) ($data['midgard_location'] ?? ''),
             'midgard_server_name' => (string) ($data['midgard_server_name'] ?? ''),
@@ -583,6 +585,7 @@ class MetadataStore implements PasswordDispatchStore
             'midgard_primary_ipv6' => '',
             'midgard_stats_json' => '',
             'midgard_os_name' => '',
+            'midgard_os_distro' => '',
             'midgard_vmid' => '',
             'midgard_location' => '',
             'midgard_server_name' => '',
@@ -637,6 +640,9 @@ class MetadataStore implements PasswordDispatchStore
             },
             'midgard_os_name' => static function ($table): void {
                 $table->string('midgard_os_name', 191)->nullable();
+            },
+            'midgard_os_distro' => static function ($table): void {
+                $table->string('midgard_os_distro', 64)->nullable();
             },
             'midgard_vmid' => static function ($table): void {
                 $table->string('midgard_vmid', 32)->nullable();

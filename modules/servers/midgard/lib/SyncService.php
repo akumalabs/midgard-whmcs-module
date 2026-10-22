@@ -113,6 +113,9 @@ final class SyncService
                 if (is_array($osImage) && isset($osImage['name']) && (string) $osImage['name'] !== '') {
                     $meta['midgard_os_name'] = (string) $osImage['name'];
                 }
+                if (is_array($osImage) && isset($osImage['distro']) && (string) $osImage['distro'] !== '') {
+                    $meta['midgard_os_distro'] = (string) $osImage['distro'];
+                }
 
                 // VMID + location (panel payload: vmid, node.{name, location.{name, short_code}}).
                 $vmid = trim((string) ($serverData['vmid'] ?? ''));
