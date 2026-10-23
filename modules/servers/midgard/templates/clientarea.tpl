@@ -108,12 +108,17 @@
         /* ── Definition rows (2 kolom: kiri identitas, kanan resource) ── */
         .midgard-ca-rows { display: grid; column-gap: 32px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 30px; row-gap: 0; }
         .midgard-ca-row { align-items: baseline; display: flex; gap: 12px; padding: 7px 0; }
-        .mg-cred-btn { align-items: center; background: transparent; border: none; color: var(--mg-muted); cursor: pointer; display: inline-flex; height: 16px; justify-content: center; margin-left: auto; padding: 0; width: 16px; }
+        .mg-cred-btn { align-items: center; align-self: center; background: transparent; border: none; color: var(--mg-muted); cursor: pointer; display: inline-flex; height: 16px; justify-content: center; margin-left: auto; padding: 0; width: 16px; }
         .mg-cred-btn:hover { color: var(--mg-text); }
         .mg-cred-btn svg { height: 14px; width: 14px; }
         .mg-cred-btn .mg-icon-copy { display: none; }
         .mg-cred-btn.mg-revealed .mg-icon-eye { display: none; }
         .mg-cred-btn.mg-revealed .mg-icon-copy { display: block; }
+        /* Password stays ONE line at any width: narrow viewports (theme sidebar
+           squeezes the container before the 768px viewport breakpoint fires)
+           would wrap a 16-char password and grow the row — ellipsis instead;
+           the full value is always available via the copy button. */
+        #mg-password-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .mg-toast { background: #18181b; border: 1px solid var(--mg-border-strong); border-radius: 8px; bottom: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.25); color: #fafafa; font-size: 13px; left: 50%; opacity: 0; padding: 10px 16px; pointer-events: none; position: fixed; transform: translateX(-50%); transition: opacity 0.2s ease; z-index: 10001; }
         .mg-toast.mg-toast-show { opacity: 1; }
         .midgard-ca-label { color: var(--mg-text); flex: 0 0 88px; font-size: 12.5px; font-weight: 700; letter-spacing: 0.02em; }
