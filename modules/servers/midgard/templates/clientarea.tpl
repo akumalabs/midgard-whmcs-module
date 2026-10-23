@@ -112,9 +112,9 @@
         .mg-cred-btn { align-items: center; background: transparent; border: none; color: var(--mg-muted); cursor: pointer; display: inline-flex; height: 16px; justify-content: center; padding: 0; width: 16px; }
         .mg-cred-btn:hover { color: var(--mg-text); }
         .mg-cred-btn svg { height: 14px; width: 14px; }
-        .mg-cred-btn .mg-icon-copy { display: none; }
-        .mg-cred-btn.mg-revealed .mg-icon-eye { display: none; }
-        .mg-cred-btn.mg-revealed .mg-icon-copy { display: block; }
+        /* Two separate, always-visible buttons: eye (reveal) + copy (clipboard).
+           Gap between them via wrap gap; the copied badge anchors to the wrap. */
+        .mg-cred-wrap { gap: 6px; }
         /* "Copied" confirmation sits BESIDE the button (Master: not the global toast) */
         .mg-copied { background: #18181b; border-radius: 6px; color: #fafafa; font-size: 11px; opacity: 0; padding: 4px 8px; pointer-events: none; position: absolute; right: calc(100% + 8px); top: 50%; transform: translateY(-50%); transition: opacity 0.15s ease; white-space: nowrap; }
         .mg-copied.mg-show { opacity: 1; }
@@ -309,8 +309,10 @@
             <span class="midgard-ca-value" id="mg-password-value" data-masked="1">&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;</span>
             {if $midgardActionsEnabled}
             <span class="mg-cred-wrap">
-                <button type="button" class="mg-cred-btn" id="mg-pw-btn" title="Show password" aria-label="Show password" aria-pressed="false">
+                <button type="button" class="mg-cred-btn" id="mg-pw-eye" title="Show password" aria-label="Show password" aria-pressed="false">
                     <svg class="mg-icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+                <button type="button" class="mg-cred-btn" id="mg-pw-copy" title="Copy password" aria-label="Copy password">
                     <svg class="mg-icon-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                 </button>
                 <span class="mg-copied" id="mg-copied">Copied</span>
@@ -786,20 +788,25 @@
                 }, 4000);
             }
 
-            /* ── Password reveal→copy single button (on-demand fetch) ──── */
+            /* ── Password eye + copy buttons (on-demand fetch) ─────────── */
             var pwRevealed = false;
             var pwValue = '';
             var pwCopyTimer = null;
-            var pwBtn = $('mg-pw-btn');
+            var eyeBtn = $('mg-pw-eye');
+            var copyBtn = $('mg-pw-copy');
             var pwCell = $('mg-password-value');
 
             function pwShow() {
                 pwCell.textContent = pwValue;
                 pwCell.removeAttribute('data-masked');
-                pwBtn.className = 'mg-cred-btn mg-revealed';
-                pwBtn.setAttribute('aria-pressed', 'true');
-                pwBtn.title = 'Copy password';
-                pwBtn.setAttribute('aria-label', 'Copy password');
+                eyeBtn.setAttribute('aria-pressed', 'true');
+                eyeBtn.title = 'Hide password';
+            }
+            function pwHide() {
+                pwCell.textContent = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
+                pwCell.setAttribute('data-masked', '1');
+                eyeBtn.setAttribute('aria-pressed', 'false');
+                eyeBtn.title = 'Show password';
             }
             function pwCopy(value) {
                 if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -821,29 +828,52 @@
                 }
             }
 
-            if (pwBtn) {
-                pwBtn.addEventListener('click', function () {
-                    // Revealed state: the SAME button is now copy.
+            function ensurePassword() {
+                if (pwValue !== '') {
+                    return Promise.resolve(pwValue);
+                }
+                var btn = pwRevealed ? copyBtn : eyeBtn;
+                btn.disabled = true;
+                return api('credentials', {})
+                    .then(function (data) {
+                        pwValue = String(data.password || '');
+                        return pwValue;
+                    })
+                    .catch(function (err) {
+                        toast((err && err.message) ? err.message : 'Password is not available.');
+                        return '';
+                    })
+                    .then(function (value) {
+                        btn.disabled = false;
+                        return value;
+                    });
+            }
+
+            if (eyeBtn) {
+                eyeBtn.addEventListener('click', function () {
                     if (pwRevealed) {
+                        pwRevealed = false;
+                        pwHide();
+                        return;
+                    }
+                    ensurePassword().then(function (value) {
+                        if (value === '') { return; }
+                        pwRevealed = true;
+                        pwShow();
+                    });
+                });
+            }
+
+            if (copyBtn) {
+                copyBtn.addEventListener('click', function () {
+                    if (pwValue !== '') {
                         pwCopy(pwValue);
                         return;
                     }
-                    if (pwValue !== '') {
-                        pwRevealed = true;
-                        pwShow();
-                        return;
-                    }
-                    pwBtn.disabled = true;
-                    api('credentials', {})
-                        .then(function (data) {
-                            pwValue = String(data.password || '');
-                            pwRevealed = true;
-                            pwShow();
-                        })
-                        .catch(function (err) {
-                            toast((err && err.message) ? err.message : 'Password is not available.');
-                        })
-                        .then(function () { pwBtn.disabled = false; });
+                    ensurePassword().then(function (value) {
+                        if (value === '') { return; }
+                        pwCopy(value);
+                    });
                 });
             }
 
