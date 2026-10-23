@@ -108,10 +108,12 @@
         /* ── Definition rows (2 kolom: kiri identitas, kanan resource) ── */
         .midgard-ca-rows { display: grid; column-gap: 32px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 30px; row-gap: 0; }
         .midgard-ca-row { align-items: baseline; display: flex; gap: 12px; padding: 7px 0; }
-        .mg-cred-btns { display: inline-flex; gap: 4px; margin-left: auto; }
-        .mg-pw-eye .mg-eye-off { display: none; }
-        .mg-pw-eye.mg-revealed .mg-eye-on { display: none; }
-        .mg-pw-eye.mg-revealed .mg-eye-off { display: block; }
+        .mg-cred-btn { align-items: center; background: transparent; border: none; color: var(--mg-muted); cursor: pointer; display: inline-flex; height: 16px; justify-content: center; margin-left: auto; padding: 0; width: 16px; }
+        .mg-cred-btn:hover { color: var(--mg-text); }
+        .mg-cred-btn svg { height: 14px; width: 14px; }
+        .mg-cred-btn .mg-icon-copy { display: none; }
+        .mg-cred-btn.mg-revealed .mg-icon-eye { display: none; }
+        .mg-cred-btn.mg-revealed .mg-icon-copy { display: block; }
         .mg-toast { background: #18181b; border: 1px solid var(--mg-border-strong); border-radius: 8px; bottom: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.25); color: #fafafa; font-size: 13px; left: 50%; opacity: 0; padding: 10px 16px; pointer-events: none; position: fixed; transform: translateX(-50%); transition: opacity 0.2s ease; z-index: 10001; }
         .mg-toast.mg-toast-show { opacity: 1; }
         .midgard-ca-label { color: var(--mg-text); flex: 0 0 88px; font-size: 12.5px; font-weight: 700; letter-spacing: 0.02em; }
@@ -293,15 +295,10 @@
             <span class="midgard-ca-label">Password</span>
             <span class="midgard-ca-value" id="mg-password-value" data-masked="1">&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;</span>
             {if $midgardActionsEnabled}
-            <span class="mg-cred-btns">
-                <button type="button" class="mg-icon-btn mg-pw-eye" id="mg-pw-eye" title="Show password" aria-label="Show password" aria-pressed="false">
-                    <svg class="mg-eye-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                    <svg class="mg-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-                </button>
-                <button type="button" class="mg-icon-btn mg-pw-copy" id="mg-pw-copy" title="Copy password" aria-label="Copy password">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                </button>
-            </span>
+            <button type="button" class="mg-cred-btn" id="mg-pw-btn" title="Show password" aria-label="Show password" aria-pressed="false">
+                <svg class="mg-icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg class="mg-icon-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </button>
             {/if}
         </div>
     </div>
@@ -773,33 +770,37 @@
                 }, 4000);
             }
 
-            /* ── Password reveal + copy (on-demand fetch, never in HTML) ── */
+            /* ── Password reveal→copy single button (on-demand fetch) ──── */
             var pwRevealed = false;
             var pwValue = '';
-            var eyeBtn = $('mg-pw-eye');
-            var copyBtn = $('mg-pw-copy');
+            var pwBtn = $('mg-pw-btn');
             var pwCell = $('mg-password-value');
 
             function pwShow() {
                 pwCell.textContent = pwValue;
                 pwCell.removeAttribute('data-masked');
-                eyeBtn.className = 'mg-icon-btn mg-pw-eye mg-revealed';
-                eyeBtn.setAttribute('aria-pressed', 'true');
-                eyeBtn.title = 'Hide password';
+                pwBtn.className = 'mg-cred-btn mg-revealed';
+                pwBtn.setAttribute('aria-pressed', 'true');
+                pwBtn.title = 'Copy password';
+                pwBtn.setAttribute('aria-label', 'Copy password');
             }
-            function pwHide() {
-                pwCell.textContent = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
-                pwCell.setAttribute('data-masked', '1');
-                eyeBtn.className = 'mg-icon-btn mg-pw-eye';
-                eyeBtn.setAttribute('aria-pressed', 'false');
-                eyeBtn.title = 'Show password';
+            function pwCopy(value) {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(value).then(function () {
+                        toast('Password copied to clipboard.');
+                    }, function () {
+                        toast('Copy failed — select and copy manually.');
+                    });
+                } else {
+                    toast('Copy is not supported by this browser.');
+                }
             }
 
-            if (eyeBtn) {
-                eyeBtn.addEventListener('click', function () {
+            if (pwBtn) {
+                pwBtn.addEventListener('click', function () {
+                    // Revealed state: the SAME button is now copy.
                     if (pwRevealed) {
-                        pwRevealed = false;
-                        pwHide();
+                        pwCopy(pwValue);
                         return;
                     }
                     if (pwValue !== '') {
@@ -807,7 +808,7 @@
                         pwShow();
                         return;
                     }
-                    eyeBtn.disabled = true;
+                    pwBtn.disabled = true;
                     api('credentials', {})
                         .then(function (data) {
                             pwValue = String(data.password || '');
@@ -817,41 +818,7 @@
                         .catch(function (err) {
                             toast((err && err.message) ? err.message : 'Password is not available.');
                         })
-                        .then(function () { eyeBtn.disabled = false; });
-                });
-            }
-
-            if (copyBtn) {
-                copyBtn.addEventListener('click', function () {
-                    var write = function (value) {
-                        if (navigator.clipboard && navigator.clipboard.writeText) {
-                            navigator.clipboard.writeText(value).then(function () {
-                                toast('Password copied to clipboard.');
-                            }, function () {
-                                toast('Copy failed — select and copy manually.');
-                            });
-                        } else {
-                            toast('Copy is not supported by this browser.');
-                        }
-                    };
-                    if (pwValue !== '') {
-                        write(pwValue);
-                        return;
-                    }
-                    copyBtn.disabled = true;
-                    api('credentials', {})
-                        .then(function (data) {
-                            pwValue = String(data.password || '');
-                            if (!pwRevealed) {
-                                pwRevealed = true;
-                                pwShow();
-                            }
-                            write(pwValue);
-                        })
-                        .catch(function (err) {
-                            toast((err && err.message) ? err.message : 'Password is not available.');
-                        })
-                        .then(function () { copyBtn.disabled = false; });
+                        .then(function () { pwBtn.disabled = false; });
                 });
             }
 
