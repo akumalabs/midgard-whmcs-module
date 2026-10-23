@@ -108,12 +108,20 @@
         /* ── Definition rows (2 kolom: kiri identitas, kanan resource) ── */
         .midgard-ca-rows { display: grid; column-gap: 32px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 30px; row-gap: 0; }
         .midgard-ca-row { align-items: baseline; display: flex; gap: 12px; padding: 7px 0; }
-        .mg-cred-btn { align-items: center; align-self: center; background: transparent; border: none; color: var(--mg-muted); cursor: pointer; display: inline-flex; height: 16px; justify-content: center; margin-left: auto; padding: 0; width: 16px; }
+        .mg-cred-wrap { align-self: center; display: inline-flex; margin-left: auto; position: relative; }
+        .mg-cred-btn { align-items: center; background: transparent; border: none; color: var(--mg-muted); cursor: pointer; display: inline-flex; height: 16px; justify-content: center; padding: 0; width: 16px; }
         .mg-cred-btn:hover { color: var(--mg-text); }
         .mg-cred-btn svg { height: 14px; width: 14px; }
         .mg-cred-btn .mg-icon-copy { display: none; }
         .mg-cred-btn.mg-revealed .mg-icon-eye { display: none; }
         .mg-cred-btn.mg-revealed .mg-icon-copy { display: block; }
+        /* "Copied" confirmation sits BESIDE the button (Master: not the global toast) */
+        .mg-copied { background: #18181b; border-radius: 6px; color: #fafafa; font-size: 11px; opacity: 0; padding: 4px 8px; pointer-events: none; position: absolute; right: calc(100% + 8px); top: 50%; transform: translateY(-50%); transition: opacity 0.15s ease; white-space: nowrap; }
+        .mg-copied.mg-show { opacity: 1; }
+        /* Rename pencil beside the server title — compact, baseline-safe */
+        .mg-title-btn { align-items: center; background: transparent; border: none; color: var(--mg-muted); cursor: pointer; display: inline-flex; height: 16px; justify-content: center; margin-left: 8px; padding: 0; vertical-align: middle; width: 16px; }
+        .mg-title-btn:hover { color: var(--mg-text); }
+        .mg-title-btn svg { height: 14px; width: 14px; }
         /* Password stays ONE line at any width: narrow viewports (theme sidebar
            squeezes the container before the 768px viewport breakpoint fires)
            would wrap a 16-char password and grow the row — ellipsis instead;
@@ -217,7 +225,7 @@
 
     {* ── Header: name + action bar ───────────────────────────────────── *}
     <div class="midgard-ca-header">
-        <h3 class="midgard-ca-title" id="mg-server-title">{$midgardServerName|default:'-'|escape}{if $midgardActionsEnabled}<button type="button" class="mg-icon-btn mg-rename" id="mg-btn-rename" title="Rename server" aria-label="Rename server"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>{/if}</h3>
+        <h3 class="midgard-ca-title" id="mg-server-title">{$midgardServerName|default:'-'|escape}{if $midgardActionsEnabled}<button type="button" class="mg-title-btn" id="mg-btn-rename" title="Rename server" aria-label="Rename server"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>{/if}</h3>
 
         {if $midgardActionsEnabled}
             <div class="midgard-ca-actions" id="mg-actions">
@@ -300,10 +308,13 @@
             <span class="midgard-ca-label">Password</span>
             <span class="midgard-ca-value" id="mg-password-value" data-masked="1">&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;</span>
             {if $midgardActionsEnabled}
-            <button type="button" class="mg-cred-btn" id="mg-pw-btn" title="Show password" aria-label="Show password" aria-pressed="false">
-                <svg class="mg-icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                <svg class="mg-icon-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-            </button>
+            <span class="mg-cred-wrap">
+                <button type="button" class="mg-cred-btn" id="mg-pw-btn" title="Show password" aria-label="Show password" aria-pressed="false">
+                    <svg class="mg-icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    <svg class="mg-icon-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+                <span class="mg-copied" id="mg-copied">Copied</span>
+            </span>
             {/if}
         </div>
     </div>
@@ -778,6 +789,7 @@
             /* ── Password reveal→copy single button (on-demand fetch) ──── */
             var pwRevealed = false;
             var pwValue = '';
+            var pwCopyTimer = null;
             var pwBtn = $('mg-pw-btn');
             var pwCell = $('mg-password-value');
 
@@ -792,7 +804,15 @@
             function pwCopy(value) {
                 if (navigator.clipboard && navigator.clipboard.writeText) {
                     navigator.clipboard.writeText(value).then(function () {
-                        toast('Password copied to clipboard.');
+                        // Confirmation lives BESIDE the copy button, not the global toast.
+                        var badge = $('mg-copied');
+                        if (badge) {
+                            badge.className = 'mg-copied mg-show';
+                            if (pwCopyTimer) { clearTimeout(pwCopyTimer); }
+                            pwCopyTimer = setTimeout(function () {
+                                badge.className = 'mg-copied';
+                            }, 1800);
+                        }
                     }, function () {
                         toast('Copy failed — select and copy manually.');
                     });
